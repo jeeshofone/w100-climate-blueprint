@@ -1,0 +1,517 @@
+blueprint:
+  name: Office Fan W100 Smart Control
+  description: Complete PID-controlled fan with W100 remote integration
+  domain: automation
+  input:
+    w100_device_name:
+      name: W100 Device Name
+      description: Name of your W100 device (e.g., "Tempcontrol00")
+      selector:
+        text:
+      default: "Tempcontrol00"
+    
+    heat_mode_boolean:
+      name: Heat Mode Boolean
+      description: Input boolean that controls heating mode
+      selector:
+        entity:
+          domain: input_boolean
+    
+    fan_climate_entity:
+      name: Fan Climate Entity
+      description: The actual fan/heater climate entity
+      selector:
+        entity:
+          domain: climate
+    
+    smart_thermostat_entity:
+      name: Smart Thermostat Entity
+      description: The smart_thermostat PID controller entity
+      selector:
+        entity:
+          domain: climate
+    
+    humidity_sensor:
+      name: Humidity Sensor
+      description: Primary humidity sensor for W100 display
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+    
+    backup_humidity_sensor:
+      name: Backup Humidity Sensor (Optional)
+      description: Backup humidity sensor for initialization
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+      default: ""
+    
+    heating_temperature:
+      name: Heating Temperature
+      description: Temperature to set when actively heating
+      selector:
+        number:
+          min: 15
+          max: 35
+          unit_of_measurement: "°C"
+      default: 30
+    
+    idle_temperature:
+      name: Idle Temperature
+      description: Temperature to set when maintaining (idle)
+      selector:
+        number:
+          min: 15
+          max: 35
+          unit_of_measurement: "°C"
+      default: 22
+    
+    heating_fan_mode:
+      name: Heating Fan Mode
+      description: Fan speed when actively heating
+      selector:
+        select:
+          options:
+            - "low"
+            - "medium"
+            - "high"
+            - "auto"
+      default: "high"
+    
+    idle_fan_mode:
+      name: Idle Fan Mode
+      description: Fan speed when maintaining temperature
+      selector:
+        select:
+          options:
+            - "low"
+            - "medium"
+            - "high"
+            - "auto"
+      default: "low"
+    
+    swing_mode:
+      name: Swing Mode
+      description: Oscillation mode for the fan
+      selector:
+        select:
+          options:
+            - "horizontal"
+            - "vertical"
+            - "both"
+            - "off"
+      default: "horizontal"
+
+variables:
+  w100_name: !input w100_device_name
+  fan_entity: !input fan_climate_entity
+  smart_entity: !input smart_thermostat_entity
+  humidity_entity: !input humidity_sensor
+  backup_humidity_entity: !input backup_humidity_sensor
+
+alias: "{{ w100_name }} Fan Control"
+description: "PID-controlled fan with {{ w100_name }} remote integration"
+mode: single
+
+trigger:
+  # Office fan heat mode trigger
+  - platform: state
+    entity_id: !input heat_mode_boolean
+    id: office_fan_heat_mode
+  # W100 button triggers
+  - platform: mqtt
+    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    payload: double_center
+    id: w100_toggle
+  - platform: mqtt
+    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    payload: single_plus
+    id: w100_plus
+  - platform: mqtt
+    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    payload: double_plus
+    id: w100_plus
+  - platform: mqtt
+    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    payload: single_minus
+    id: w100_minus
+  - platform: mqtt
+    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    payload: double_minus
+    id: w100_minus
+  # W100 sync triggers
+  - platform: state
+    entity_id: !input smart_thermostat_entity
+    attribute: temperature
+    id: w100_sync
+  - platform: state
+    entity_id: !input smart_thermostat_entity
+    id: w100_sync
+  - platform: state
+    entity_id: !input fan_climate_entity
+    attribute: fan_mode
+    id: w100_sync
+  - platform: time_pattern
+    hours: '*'
+    minutes: '*'
+    seconds: '0'
+    id: w100_sync
+  # W100 startup trigger
+  - platform: homeassistant
+    event: start
+    id: w100_init
+  # W100 humidity sync trigger
+  - platform: state
+    entity_id: !input humidity_sensor
+    id: w100_humidity
+  - platform: time_pattern
+    seconds: '0'
+    minutes: '*'
+    hours: '*'
+    id: w100_humidity
+
+condition: []
+
+action:
+  - choose:
+      # Office Fan Heat Mode On
+      - conditions:
+          - condition: trigger
+            id: office_fan_heat_mode
+          - condition: state
+            entity_id: !input heat_mode_boolean
+            state: "on"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              hvac_mode: heat
+          - service: climate.set_temperature
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              temperature: !input heating_temperature
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              fan_mode: !input heating_fan_mode
+          - service: climate.set_swing_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              swing_mode: !input swing_mode
+      
+      # Office Fan Heat Mode Off
+      - conditions:
+          - condition: trigger
+            id: office_fan_heat_mode
+          - condition: state
+            entity_id: !input heat_mode_boolean
+            state: "off"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              hvac_mode: fan_only
+          - service: climate.set_temperature
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              temperature: !input idle_temperature
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              fan_mode: !input idle_fan_mode
+          - service: climate.set_swing_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              swing_mode: !input swing_mode
+
+      # W100 Toggle Heat/Fan Mode
+      - conditions:
+          - condition: trigger
+            id: w100_toggle
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: cool
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input smart_thermostat_entity
+                    data:
+                      hvac_mode: heat
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: external
+            default:
+              - service: climate.set_hvac_mode
+                target:
+                  entity_id: !input smart_thermostat_entity
+                data:
+                  hvac_mode: cool
+              - service: select.select_option
+                target:
+                  entity_id: "select.{{ w100_name }}_sensor"
+                data:
+                  option: internal
+              - service: number.set_value
+                target:
+                  entity_id: "number.{{ w100_name }}_external_temperature"
+                data:
+                  value: >
+                    {{ state_attr(fan_entity, 'fan_mode') | int 
+                       if state_attr(fan_entity, 'fan_mode') else 1 }}
+              - service: mqtt.publish
+                data:
+                  topic: "zigbee2mqtt/{{ w100_name }}/set"
+                  payload: >
+                    {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int 
+                                                if state_attr(fan_entity, "fan_mode") else 1 }}}
+
+      # W100 Increase Temp/Fan Speed
+      - conditions:
+          - condition: trigger
+            id: w100_plus
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: heat
+                sequence:
+                  - variables:
+                      current_temp: "{{ state_attr(smart_entity, 'temperature') | int }}"
+                      max_temp: "{{ state_attr(smart_entity, 'max_temp') | int }}"
+                      new_temp: "{{ [current_temp + 1, max_temp] | min }}"
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input smart_thermostat_entity
+                    data:
+                      temperature: "{{ new_temp }}"
+                  - service: number.set_value
+                    target:
+                      entity_id: "number.{{ w100_name }}_external_temperature"
+                    data:
+                      value: "{{ new_temp }}"
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      payload: '{"external_temperature": {{ new_temp }}}'
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: cool
+                sequence:
+                  - variables:
+                      current_fan: "{{ state_attr(fan_entity, 'fan_mode') | int if state_attr(fan_entity, 'fan_mode') else 1 }}"
+                      new_fan: "{{ [current_fan + 1, 9] | min }}"
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      fan_mode: "{{ new_fan }}"
+                  - service: number.set_value
+                    target:
+                      entity_id: "number.{{ w100_name }}_external_temperature"
+                    data:
+                      value: "{{ new_fan }}"
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      payload: '{"external_temperature": {{ new_fan }}}'
+
+      # W100 Decrease Temp/Fan Speed
+      - conditions:
+          - condition: trigger
+            id: w100_minus
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: heat
+                sequence:
+                  - variables:
+                      current_temp: "{{ state_attr(smart_entity, 'temperature') | int }}"
+                      min_temp: "{{ state_attr(smart_entity, 'min_temp') | int }}"
+                      new_temp: "{{ [current_temp - 1, min_temp] | max }}"
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input smart_thermostat_entity
+                    data:
+                      temperature: "{{ new_temp }}"
+                  - service: number.set_value
+                    target:
+                      entity_id: "number.{{ w100_name }}_external_temperature"
+                    data:
+                      value: "{{ new_temp }}"
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      payload: '{"external_temperature": {{ new_temp }}}'
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: cool
+                sequence:
+                  - variables:
+                      current_fan: "{{ state_attr(fan_entity, 'fan_mode') | int if state_attr(fan_entity, 'fan_mode') else 1 }}"
+                      new_fan: "{{ [current_fan - 1, 1] | max }}"
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      fan_mode: "{{ new_fan }}"
+                  - service: number.set_value
+                    target:
+                      entity_id: "number.{{ w100_name }}_external_temperature"
+                    data:
+                      value: "{{ new_fan }}"
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      payload: '{"external_temperature": {{ new_fan }}}'
+
+      # W100 Sync Display Values
+      - conditions:
+          - condition: trigger
+            id: w100_sync
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: heat
+                sequence:
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: external
+                  - service: number.set_value
+                    target:
+                      entity_id: "number.{{ w100_name }}_external_temperature"
+                    data:
+                      value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      payload: >
+                        {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: cool
+                sequence:
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: internal
+                  - service: number.set_value
+                    target:
+                      entity_id: "number.{{ w100_name }}_external_temperature"
+                    data:
+                      value: >
+                        {{ state_attr(fan_entity, 'fan_mode') | int 
+                           if state_attr(fan_entity, 'fan_mode') else 1 }}
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      payload: >
+                        {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int 
+                                                    if state_attr(fan_entity, "fan_mode") else 1 }}}
+            default:
+              - service: select.select_option
+                target:
+                  entity_id: "select.{{ w100_name }}_sensor"
+                data:
+                  option: internal
+
+      # W100 Initialize Display on Startup
+      - conditions:
+          - condition: trigger
+            id: w100_init
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: heat
+                sequence:
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: external
+                  - service: number.set_value
+                    target:
+                      entity_id: "number.{{ w100_name }}_external_temperature"
+                    data:
+                      value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
+                  - service: mqtt.publish
+                    data:
+                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      payload: >
+                        {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
+            default:
+              - service: select.select_option
+                target:
+                  entity_id: "select.{{ w100_name }}_sensor"
+                data:
+                  option: internal
+              - service: number.set_value
+                target:
+                  entity_id: "number.{{ w100_name }}_external_temperature"
+                data:
+                  value: >
+                    {{ state_attr(fan_entity, 'fan_mode') | int 
+                       if state_attr(fan_entity, 'fan_mode') else 1 }}
+              - service: mqtt.publish
+                data:
+                  topic: "zigbee2mqtt/{{ w100_name }}/set"
+                  payload: >
+                    {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int 
+                                                if state_attr(fan_entity, "fan_mode") else 1 }}}
+          - service: number.set_value
+            target:
+              entity_id: "number.{{ w100_name }}_external_humidity"
+            data:
+              value: >
+                {% if backup_humidity_entity %}
+                  {{ states(backup_humidity_entity) | round(0) }}
+                {% else %}
+                  50
+                {% endif %}
+          - service: mqtt.publish
+            data:
+              topic: "zigbee2mqtt/{{ w100_name }}/set"
+              payload: >
+                {"external_humidity": {% if backup_humidity_entity %}{{ states(backup_humidity_entity) | round(0) }}{% else %}50{% endif %}}
+
+      # W100 Sync Humidity Display
+      - conditions:
+          - condition: trigger
+            id: w100_humidity
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: "number.{{ w100_name }}_external_humidity"
+            data:
+              value: "{{ states(humidity_entity) | round(0) }}"
+          - service: mqtt.publish
+            data:
+              topic: "zigbee2mqtt/{{ w100_name }}/set"
+              payload: '{"external_humidity": {{ states(humidity_entity) | round(0) }}}'
