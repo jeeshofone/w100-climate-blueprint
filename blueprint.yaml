@@ -186,12 +186,16 @@ trigger:
     entity_id: !input smart_thermostat_entity
     id: w100_sync
   - platform: state
+    entity_id: !input smart_thermostat_entity
+    attribute: current_temperature
+    id: w100_sync
+  - platform: state
     entity_id: !input fan_climate_entity
     attribute: fan_mode
     id: w100_sync
   - platform: time_pattern
     minutes: '*'
-    seconds: '/30'
+    seconds: '/5'
     id: w100_sync
   # W100 startup trigger
   - platform: homeassistant
@@ -447,6 +451,8 @@ action:
           - condition: trigger
             id: w100_sync
         sequence:
+          - delay:
+              milliseconds: 100
           - choose:
               - conditions:
                   - condition: state
