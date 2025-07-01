@@ -362,6 +362,11 @@ action:
                       entity_id: !input smart_thermostat_entity
                     data:
                       temperature: "{{ new_temp }}"
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: external
                   - service: number.set_value
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
@@ -370,7 +375,8 @@ action:
                   - service: mqtt.publish
                     data:
                       topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: '{"external_temperature": {{ new_temp }}}'
+                      payload: >
+                        {"external_temperature": {{ new_temp }}}
               - conditions:
                   - condition: state
                     entity_id: !input smart_thermostat_entity
@@ -384,6 +390,11 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       fan_mode: "{{ new_fan | string }}"
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: internal
                   - service: number.set_value
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
@@ -392,7 +403,8 @@ action:
                   - service: mqtt.publish
                     data:
                       topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: '{"external_temperature": {{ new_fan }}}'
+                      payload: >
+                        {"external_temperature": {{ new_fan }}}
 
       # W100 Decrease Temp/Fan Speed
       - conditions:
@@ -414,6 +426,11 @@ action:
                       entity_id: !input smart_thermostat_entity
                     data:
                       temperature: "{{ new_temp }}"
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: external
                   - service: number.set_value
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
@@ -422,7 +439,8 @@ action:
                   - service: mqtt.publish
                     data:
                       topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: '{"external_temperature": {{ new_temp }}}'
+                      payload: >
+                        {"external_temperature": {{ new_temp }}}
               - conditions:
                   - condition: state
                     entity_id: !input smart_thermostat_entity
@@ -436,6 +454,11 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       fan_mode: "{{ new_fan | string }}"
+                  - service: select.select_option
+                    target:
+                      entity_id: "select.{{ w100_name }}_sensor"
+                    data:
+                      option: internal
                   - service: number.set_value
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
@@ -444,15 +467,14 @@ action:
                   - service: mqtt.publish
                     data:
                       topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: '{"external_temperature": {{ new_fan }}}'
+                      payload: >
+                        {"external_temperature": {{ new_fan }}}
 
       # W100 Sync Display Values
       - conditions:
           - condition: trigger
             id: w100_sync
         sequence:
-          - delay:
-              milliseconds: 100
           - choose:
               - conditions:
                   - condition: state
