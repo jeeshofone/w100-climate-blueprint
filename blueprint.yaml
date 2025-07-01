@@ -1,6 +1,6 @@
 blueprint:
   name: Office Fan W100 Smart Control
-  description: Complete PID-controlled fan with W100 remote integration
+  description: Complete PID-controlled fan with W100 remote integration (Optimized with parallel mode for better responsiveness)
   domain: automation
   input:
     w100_device_name:
@@ -113,7 +113,9 @@ variables:
 
 alias: "{{ w100_name }} Fan Control"
 description: "PID-controlled fan with {{ w100_name }} remote integration"
-mode: single
+mode: parallel
+max: 8
+max_exceeded: warning
 
 trigger:
   # Office fan heat mode trigger
@@ -154,9 +156,8 @@ trigger:
     attribute: fan_mode
     id: w100_sync
   - platform: time_pattern
-    hours: '*'
     minutes: '*'
-    seconds: '0'
+    seconds: '/30'
     id: w100_sync
   # W100 startup trigger
   - platform: homeassistant
@@ -167,9 +168,8 @@ trigger:
     entity_id: !input humidity_sensor
     id: w100_humidity
   - platform: time_pattern
+    minutes: '/2'
     seconds: '0'
-    minutes: '*'
-    hours: '*'
     id: w100_humidity
 
 condition: []
