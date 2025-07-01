@@ -156,23 +156,23 @@ trigger:
       - "off"
   # W100 button triggers
   - platform: mqtt
-    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    topic: "zigbee2mqtt/Tempcontrol00/action"
     payload: double_center
     id: w100_toggle
   - platform: mqtt
-    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    topic: "zigbee2mqtt/Tempcontrol00/action"
     payload: single_plus
     id: w100_plus
   - platform: mqtt
-    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    topic: "zigbee2mqtt/Tempcontrol00/action"
     payload: double_plus
     id: w100_plus
   - platform: mqtt
-    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    topic: "zigbee2mqtt/Tempcontrol00/action"
     payload: single_minus
     id: w100_minus
   - platform: mqtt
-    topic: "zigbee2mqtt/{{ w100_name }}/action"
+    topic: "zigbee2mqtt/Tempcontrol00/action"
     payload: double_minus
     id: w100_minus
   # W100 sync triggers
@@ -310,7 +310,7 @@ action:
                       hvac_mode: heat
                   - service: select.select_option
                     target:
-                      entity_id: "select.{{ w100_name }}_sensor"
+                      entity_id: "select.Tempcontrol00_sensor"
                     data:
                       option: external
             default:
@@ -321,18 +321,18 @@ action:
                   hvac_mode: cool
               - service: select.select_option
                 target:
-                  entity_id: "select.{{ w100_name }}_sensor"
+                  entity_id: "select.Tempcontrol00_sensor"
                 data:
                   option: internal
               - service: number.set_value
                 target:
-                  entity_id: "number.{{ w100_name }}_external_temperature"
+                  entity_id: "number.Tempcontrol00_external_temperature"
                 data:
                   value: >
                     {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
               - service: mqtt.publish
                 data:
-                  topic: "zigbee2mqtt/{{ w100_name }}/set"
+                  topic: "zigbee2mqtt/Tempcontrol00/set"
                   payload: >
                     {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int(1) }}}
 
@@ -358,12 +358,12 @@ action:
                       temperature: "{{ new_temp }}"
                   - service: number.set_value
                     target:
-                      entity_id: "number.{{ w100_name }}_external_temperature"
+                      entity_id: "number.Tempcontrol00_external_temperature"
                     data:
                       value: "{{ new_temp }}"
                   - service: mqtt.publish
                     data:
-                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      topic: "zigbee2mqtt/Tempcontrol00/set"
                       payload: '{"external_temperature": {{ new_temp }}}'
               - conditions:
                   - condition: state
@@ -380,12 +380,12 @@ action:
                       fan_mode: "{{ new_fan | string }}"
                   - service: number.set_value
                     target:
-                      entity_id: "number.{{ w100_name }}_external_temperature"
+                      entity_id: "number.Tempcontrol00_external_temperature"
                     data:
                       value: "{{ new_fan }}"
                   - service: mqtt.publish
                     data:
-                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      topic: "zigbee2mqtt/Tempcontrol00/set"
                       payload: '{"external_temperature": {{ new_fan }}}'
 
       # W100 Decrease Temp/Fan Speed
@@ -410,12 +410,12 @@ action:
                       temperature: "{{ new_temp }}"
                   - service: number.set_value
                     target:
-                      entity_id: "number.{{ w100_name }}_external_temperature"
+                      entity_id: "number.Tempcontrol00_external_temperature"
                     data:
                       value: "{{ new_temp }}"
                   - service: mqtt.publish
                     data:
-                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      topic: "zigbee2mqtt/Tempcontrol00/set"
                       payload: '{"external_temperature": {{ new_temp }}}'
               - conditions:
                   - condition: state
@@ -432,12 +432,12 @@ action:
                       fan_mode: "{{ new_fan | string }}"
                   - service: number.set_value
                     target:
-                      entity_id: "number.{{ w100_name }}_external_temperature"
+                      entity_id: "number.Tempcontrol00_external_temperature"
                     data:
                       value: "{{ new_fan }}"
                   - service: mqtt.publish
                     data:
-                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      topic: "zigbee2mqtt/Tempcontrol00/set"
                       payload: '{"external_temperature": {{ new_fan }}}'
 
       # W100 Sync Display Values
@@ -453,17 +453,17 @@ action:
                 sequence:
                   - service: select.select_option
                     target:
-                      entity_id: "select.{{ w100_name }}_sensor"
+                      entity_id: "select.Tempcontrol00_sensor"
                     data:
                       option: external
                   - service: number.set_value
                     target:
-                      entity_id: "number.{{ w100_name }}_external_temperature"
+                      entity_id: "number.Tempcontrol00_external_temperature"
                     data:
                       value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
                   - service: mqtt.publish
                     data:
-                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      topic: "zigbee2mqtt/Tempcontrol00/set"
                       payload: >
                         {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
               - conditions:
@@ -473,24 +473,24 @@ action:
                 sequence:
                   - service: select.select_option
                     target:
-                      entity_id: "select.{{ w100_name }}_sensor"
+                      entity_id: "select.Tempcontrol00_sensor"
                     data:
                       option: internal
                   - service: number.set_value
                     target:
-                      entity_id: "number.{{ w100_name }}_external_temperature"
+                      entity_id: "number.Tempcontrol00_external_temperature"
                     data:
                       value: >
                         {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
                   - service: mqtt.publish
                     data:
-                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      topic: "zigbee2mqtt/Tempcontrol00/set"
                       payload: >
                         {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int(1) }}}
             default:
               - service: select.select_option
                 target:
-                  entity_id: "select.{{ w100_name }}_sensor"
+                  entity_id: "select.Tempcontrol00_sensor"
                 data:
                   option: internal
 
@@ -507,39 +507,39 @@ action:
                 sequence:
                   - service: select.select_option
                     target:
-                      entity_id: "select.{{ w100_name }}_sensor"
+                      entity_id: "select.Tempcontrol00_sensor"
                     data:
                       option: external
                   - service: number.set_value
                     target:
-                      entity_id: "number.{{ w100_name }}_external_temperature"
+                      entity_id: "number.Tempcontrol00_external_temperature"
                     data:
                       value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
                   - service: mqtt.publish
                     data:
-                      topic: "zigbee2mqtt/{{ w100_name }}/set"
+                      topic: "zigbee2mqtt/Tempcontrol00/set"
                       payload: >
                         {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
             default:
               - service: select.select_option
                 target:
-                  entity_id: "select.{{ w100_name }}_sensor"
+                  entity_id: "select.Tempcontrol00_sensor"
                 data:
                   option: internal
               - service: number.set_value
                 target:
-                  entity_id: "number.{{ w100_name }}_external_temperature"
+                  entity_id: "number.Tempcontrol00_external_temperature"
                 data:
                   value: >
                     {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
               - service: mqtt.publish
                 data:
-                  topic: "zigbee2mqtt/{{ w100_name }}/set"
+                  topic: "zigbee2mqtt/Tempcontrol00/set"
                   payload: >
                     {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int(1) }}}
           - service: number.set_value
             target:
-              entity_id: "number.{{ w100_name }}_external_humidity"
+              entity_id: "number.Tempcontrol00_external_humidity"
             data:
               value: >
                 {% if backup_humidity_entity %}
@@ -549,7 +549,7 @@ action:
                 {% endif %}
           - service: mqtt.publish
             data:
-              topic: "zigbee2mqtt/{{ w100_name }}/set"
+              topic: "zigbee2mqtt/Tempcontrol00/set"
               payload: >
                 {"external_humidity": {% if backup_humidity_entity %}{{ states(backup_humidity_entity) | round(0) }}{% else %}50{% endif %}}
 
@@ -560,10 +560,10 @@ action:
         sequence:
           - service: number.set_value
             target:
-              entity_id: "number.{{ w100_name }}_external_humidity"
+              entity_id: "number.Tempcontrol00_external_humidity"
             data:
               value: "{{ states(humidity_entity) | round(0) }}"
           - service: mqtt.publish
             data:
-              topic: "zigbee2mqtt/{{ w100_name }}/set"
+              topic: "zigbee2mqtt/Tempcontrol00/set"
               payload: '{"external_humidity": {{ states(humidity_entity) | round(0) }}}'
