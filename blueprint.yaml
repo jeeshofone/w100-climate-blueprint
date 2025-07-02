@@ -1,6 +1,6 @@
 blueprint:
   name: Office Fan W100 Smart Control
-  description: v0.3 - Complete PID-controlled fan with W100 remote integration (Includes temperature sensor workaround for accurate heating)
+  description: v0.4 - Complete PID-controlled fan with W100 remote integration (Includes temperature sensor workaround and beep control)
   domain: automation
   input:
     w100_device_name:
@@ -127,6 +127,24 @@ blueprint:
             - "both"
             - "off"
       default: "horizontal"
+    
+    fan_beep_switch:
+      name: Fan Beep Switch
+      description: Switch entity that controls the fan's beep sound
+      selector:
+        entity:
+          domain: switch
+    
+    beep_mode:
+      name: Beep Mode
+      description: Control when the fan beeps
+      selector:
+        select:
+          options:
+            - "Enable Beep"
+            - "Disable Beep"
+            - "On-Mode Change"
+      default: "On-Mode Change"
 
 trigger_variables:
   w100_name: !input w100_device_name
@@ -140,6 +158,8 @@ variables:
   idle_fan_speed: !input idle_fan_speed
   idle_warm_level: !input idle_warm_level
   heating_temp: !input heating_temperature
+  beep_switch: !input fan_beep_switch
+  beep_mode: !input beep_mode
 
 alias: "{{ w100_name }} Fan Control"
 description: "PID-controlled fan with {{ w100_name }} remote integration"
@@ -165,6 +185,18 @@ trigger:
     attribute: hvac_action
     id: smart_thermostat_state
     to: "idle"
+  # Smart thermostat temperature change trigger (for beep)
+  - platform: state
+    entity_id: !input smart_thermostat_entity
+    attribute: temperature
+    id: smart_temp_change
+  # Smart thermostat mode change trigger (for beep)
+  - platform: state
+    entity_id: !input smart_thermostat_entity
+    id: smart_mode_change
+    to:
+      - "heat"
+      - "off"
   # W100 button triggers
   - platform: mqtt
     topic: zigbee2mqtt/{{ w100_name }}/action
@@ -260,6 +292,22 @@ action:
               entity_id: !input fan_climate_entity
             data:
               swing_mode: !input swing_mode
+          # Manage beep switch based on mode
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ beep_mode == 'Enable Beep' }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input fan_beep_switch
+              - conditions:
+                  - condition: template
+                    value_template: "{{ beep_mode == 'Disable Beep' }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input fan_beep_switch
       
       # Office Fan Heat Mode Off
       - conditions:
@@ -299,6 +347,22 @@ action:
               entity_id: !input fan_climate_entity
             data:
               swing_mode: !input swing_mode
+          # Manage beep switch based on mode
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ beep_mode == 'Enable Beep' }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input fan_beep_switch
+              - conditions:
+                  - condition: template
+                    value_template: "{{ beep_mode == 'Disable Beep' }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input fan_beep_switch
 
       # Smart Thermostat Idle/Off - Switch to Fan Only
       - conditions:
@@ -656,6 +720,27 @@ action:
               topic: zigbee2mqtt/{{ w100_name }}/set
               payload: >
                 {"external_humidity": {% if backup_humidity_entity %}{{ states(backup_humidity_entity) | round(0) }}{% else %}50{% endif %}}
+          # Set beep mode on startup
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ beep_mode == 'Enable Beep' }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input fan_beep_switch
+              - conditions:
+                  - condition: template
+                    value_template: "{{ beep_mode == 'Disable Beep' }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input fan_beep_switch
+            default:
+              # On-Mode Change - ensure beep is off initially
+              - service: switch.turn_off
+                target:
+                  entity_id: !input fan_beep_switch
 
       # W100 Sync Humidity Display
       - conditions:
@@ -722,3 +807,50 @@ action:
             data:
               message: "Blueprint Debug: Air circulation complete. Resuming normal heating."
               level: warning
+      
+      # Smart Thermostat Temperature Change - Beep
+      - conditions:
+          - condition: trigger
+            id: smart_temp_change
+          - condition: template
+            value_template: "{{ beep_mode == 'On-Mode Change' }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input fan_beep_switch
+          - delay:
+              milliseconds: 200
+          - service: switch.turn_on
+            target:
+              entity_id: !input fan_beep_switch
+          - delay:
+              milliseconds: 500
+          - service: switch.turn_off
+            target:
+              entity_id: !input fan_beep_switch
+      
+      # Smart Thermostat Mode Change - Beep
+      - conditions:
+          - condition: trigger
+            id: smart_mode_change
+          - condition: template
+            value_template: "{{ beep_mode == 'On-Mode Change' }}"
+          # Don't beep if this was triggered by the workaround
+          - condition: template
+            value_template: >
+              {% set last_changed = states.climate[smart_entity.split('.')[1]].last_changed %}
+              {{ (now() - last_changed).total_seconds() > 10 }}
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input fan_beep_switch
+          - delay:
+              milliseconds: 200
+          - service: switch.turn_on
+            target:
+              entity_id: !input fan_beep_switch
+          - delay:
+              milliseconds: 500
+          - service: switch.turn_off
+            target:
+              entity_id: !input fan_beep_switch
