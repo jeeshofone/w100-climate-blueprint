@@ -1,0 +1,407 @@
+views:
+  - title: Home
+    path: home
+    icon: mdi:home
+    cards:
+      - type: grid
+        columns: 3
+        cards:
+          - type: entity
+            entity: climate.smart_nursery_fan_controller
+            name: Smart Thermostat
+            icon: mdi:thermostat
+          - type: entity
+            entity: sensor.nursery_temp
+            name: Current Temperature
+            icon: mdi:thermometer
+          - type: entity
+            entity: input_boolean.nursery_fan_heat_mode
+            name: Heat Mode Active
+            icon: mdi:radiator
+      - type: history-graph
+        title: Temperature Control
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.nursery_temp
+            name: Current Temp
+          - entity: climate.smart_nursery_fan_controller
+            attribute: temperature
+            name: Target Temp
+          - entity: climate.smart_nursery_fan_controller
+            attribute: current_temperature
+            name: Thermostat Reading
+      - type: history-graph
+        title: Heater Power Consumption
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.nursery_heater_power
+            name: Power (W)
+          - entity: input_boolean.nursery_fan_heat_mode
+            name: Heat Mode
+            y_axis: secondary
+      - type: statistics-graph
+        title: Daily Energy Usage
+        chart_type: line
+        period: hour
+        stat_types:
+          - change
+        entities:
+          - sensor.nursery_heater_energy
+      - type: grid
+        columns: 2
+        cards:
+          - type: entities
+            title: System Status
+            entities:
+              - entity: climate.smart_nursery_fan_controller
+                name: Thermostat Mode
+                attribute: hvac_mode
+              - entity: climate.smart_nursery_fan_controller
+                name: Thermostat Action
+                attribute: hvac_action
+              - entity: climate.office_fan
+                name: Fan Mode
+                attribute: fan_mode
+              - entity: climate.office_fan
+                name: Fan Speed
+                attribute: preset_mode
+              - entity: climate.office_fan
+                name: Swing Mode
+                attribute: swing_mode
+          - type: entities
+            title: Power Statistics
+            entities:
+              - entity: sensor.nursery_heater_power
+                name: Current Power
+              - entity: sensor.nursery_heater_energy
+                name: Total Energy
+              - type: divider
+              - entity: sensor.nursery_heater_power
+                name: Power Trend
+                secondary_info: last-updated
+      - type: entities
+        title: PID Controller Debug
+        show_header_toggle: false
+        entities:
+          - entity: climate.smart_nursery_fan_controller
+            name: P Value
+            attribute: proportional
+          - entity: climate.smart_nursery_fan_controller
+            name: I Value
+            attribute: integral
+          - entity: climate.smart_nursery_fan_controller
+            name: D Value
+            attribute: derivative
+          - entity: climate.smart_nursery_fan_controller
+            name: Control Output
+            attribute: control_output
+          - entity: climate.smart_nursery_fan_controller
+            name: Error
+            attribute: error
+      - type: entities
+        title: W100 Remote Control
+        entities:
+          - entity: select.tempcontrol01_sensor
+            name: Display Mode
+          - entity: number.tempcontrol01_external_temperature
+            name: Display Temperature
+          - entity: number.tempcontrol01_external_humidity
+            name: Display Humidity
+          - entity: sensor.nursery_humidity_group
+            name: Actual Humidity
+      - type: grid
+        columns: 2
+        cards:
+          - type: thermostat
+            entity: climate.smart_nursery_fan_controller
+            name: Smart PID Thermostat
+            features:
+              - type: climate-hvac-modes
+              - type: climate-preset-modes
+          - type: thermostat
+            entity: climate.office_fan
+            name: Direct Fan Control
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Live System Monitor
+        graph_span: 2h
+        update_interval: 10s
+        yaxis:
+          - id: temp
+            min: 18
+            max: 26
+          - id: power
+            opposite: true
+            min: 0
+        apex_config:
+          chart:
+            height: 350px
+            animations:
+              enabled: true
+              dynamicAnimation:
+                speed: 1000
+          yaxis:
+            - title:
+                text: Temperature (°C)
+            - title:
+                text: Power (W)
+        series:
+          - entity: sensor.nursery_temp
+            name: Room Temp
+            type: line
+            color: blue
+            stroke_width: 2
+            yaxis_id: temp
+          - entity: climate.smart_nursery_fan_controller
+            attribute: temperature
+            name: Target
+            type: line
+            color: red
+            stroke_width: 2
+            curve: stepline
+            yaxis_id: temp
+          - entity: sensor.nursery_heater_power
+            name: Power
+            type: area
+            color: orange
+            opacity: 0.4
+            yaxis_id: power
+      - type: entities
+        title: Automation Status
+        entities:
+          - entity: automation.nursery_smart_fan
+            name: Main Control Automation
+          - type: divider
+          - entity: sensor.nursery_temp
+            name: Temperature Trend
+            secondary_info: last-updated
+  - title: Detailed Analytics
+    path: analytics
+    icon: mdi:chart-line
+    cards:
+      - type: history-graph
+        title: 24-Hour Temperature Analysis
+        hours_to_show: 24
+        refresh_interval: 30
+        entities:
+          - entity: sensor.nursery_temp
+            name: Room Temperature
+          - entity: climate.smart_nursery_fan_controller
+            attribute: temperature
+            name: Target Temperature
+          - entity: climate.office_fan
+            attribute: current_temperature
+            name: Fan Sensor
+          - entity: input_boolean.nursery_fan_heat_mode
+            name: Heating Active
+      - type: history-graph
+        title: Power Usage Pattern
+        hours_to_show: 24
+        refresh_interval: 30
+        entities:
+          - entity: sensor.nursery_heater_power
+            name: Instantaneous Power
+          - entity: sensor.nursery_heater_energy
+            name: Cumulative Energy
+      - type: history-graph
+        title: Environmental Monitoring
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.nursery_humidity_group
+            name: Nursery Humidity
+          - entity: sensor.nursery_temp
+            name: Nursery Temperature
+      - type: grid
+        columns: 2
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Heating Efficiency Analysis
+            graph_span: 24h
+            update_interval: 1min
+            yaxis:
+              - id: power
+                min: 0
+                decimals: 0
+              - id: temp
+                opposite: true
+                min: 16
+                max: 28
+                decimals: 1
+            apex_config:
+              chart:
+                height: 400px
+              yaxis:
+                - title:
+                    text: Power (W)
+                - title:
+                    text: Temperature (°C)
+            series:
+              - entity: sensor.nursery_heater_power
+                name: Power Usage
+                type: column
+                color: orange
+                yaxis_id: power
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: sensor.nursery_temp
+                name: Room Temperature
+                type: line
+                color: blue
+                stroke_width: 3
+                yaxis_id: temp
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: climate.smart_nursery_fan_controller
+                attribute: temperature
+                name: Target Temperature
+                type: line
+                color: red
+                stroke_width: 2
+                curve: stepline
+                yaxis_id: temp
+          - type: statistics-graph
+            title: System Performance
+            chart_type: bar
+            period: hour
+            stat_types:
+              - mean
+              - min
+              - max
+            entities:
+              - sensor.nursery_temp
+              - sensor.nursery_heater_power
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: PID Controller Performance
+        graph_span: 6h
+        update_interval: 30s
+        yaxis:
+          - id: temp
+            min: 16
+            max: 28
+          - id: binary
+            opposite: true
+            show: false
+            min: 0
+            max: 1
+          - id: power
+            opposite: true
+            min: 0
+        apex_config:
+          chart:
+            height: 400px
+          stroke:
+            width:
+              - 3
+              - 2
+              - 2
+              - 1
+          yaxis:
+            - title:
+                text: Temperature (°C)
+            - title:
+                text: ''
+            - title:
+                text: Power (W)
+        series:
+          - entity: sensor.nursery_temp
+            name: Current Temp
+            type: line
+            color: blue
+            stroke_width: 3
+            yaxis_id: temp
+          - entity: climate.smart_nursery_fan_controller
+            attribute: temperature
+            name: Target Temp
+            type: line
+            color: red
+            stroke_width: 2
+            curve: stepline
+            yaxis_id: temp
+          - entity: input_boolean.nursery_fan_heat_mode
+            name: Heat Active
+            type: area
+            color: orange
+            opacity: 0.3
+            yaxis_id: binary
+          - entity: sensor.nursery_heater_power
+            name: Power
+            type: line
+            color: purple
+            stroke_width: 1
+            yaxis_id: power
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Daily Energy Consumption Pattern
+        graph_span: 7d
+        span:
+          end: day
+        update_interval: 1h
+        apex_config:
+          chart:
+            height: 300px
+        series:
+          - entity: sensor.nursery_heater_energy
+            name: Energy Usage
+            type: column
+            color: green
+            group_by:
+              func: diff
+              duration: 1h
+      - type: history-graph
+        title: Control Events Timeline
+        hours_to_show: 6
+        refresh_interval: 30
+        entities:
+          - entity: input_boolean.nursery_fan_heat_mode
+            name: Heat Mode
+          - entity: climate.smart_nursery_fan_controller
+            attribute: hvac_action
+            name: Thermostat Action
+          - entity: climate.office_fan
+            attribute: fan_mode
+            name: Fan Speed
+      - type: grid
+        columns: 4
+        cards:
+          - type: statistic
+            entity: sensor.nursery_heater_energy
+            period:
+              calendar:
+                period: day
+            stat_type: change
+            name: Energy Today
+            unit: kWh
+          - type: statistic
+            entity: sensor.nursery_heater_power
+            period:
+              calendar:
+                period: day
+            stat_type: mean
+            name: Avg Power Today
+            unit: W
+          - type: statistic
+            entity: sensor.nursery_temp
+            period:
+              calendar:
+                period: day
+            stat_type: mean
+            name: Avg Temp Today
+            unit: °C
+          - type: statistic
+            entity: input_boolean.nursery_fan_heat_mode
+            period:
+              calendar:
+                period: day
+            stat_type: count
+            name: Heat Cycles Today 
