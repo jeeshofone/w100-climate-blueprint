@@ -259,11 +259,21 @@ action:
             entity_id: !input heat_mode_boolean
             state: "off"
         sequence:
+          - service: system_log.write
+            data:
+              message: >
+                Blueprint Debug: Heat mode turned OFF. Setting fan to idle speed: {{ idle_fan_speed }}
+              level: warning
           - service: climate.set_hvac_mode
             target:
               entity_id: !input fan_climate_entity
             data:
               hvac_mode: fan_only
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              fan_mode: !input idle_fan_speed
           - service: climate.set_temperature
             target:
               entity_id: !input fan_climate_entity
