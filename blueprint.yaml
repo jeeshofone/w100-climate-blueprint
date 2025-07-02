@@ -137,6 +137,8 @@ variables:
   smart_entity: !input smart_thermostat_entity
   humidity_entity: !input humidity_sensor
   backup_humidity_entity: !input backup_humidity_sensor
+  idle_fan_speed: !input idle_fan_speed
+  idle_warm_level: !input idle_warm_level
 
 alias: "{{ w100_name }} Fan Control"
 description: "PID-controlled fan with {{ w100_name }} remote integration"
@@ -277,16 +279,30 @@ action:
           - condition: trigger
             id: smart_thermostat_state
         sequence:
+          # Debug: Log what we're about to do
+          - service: system_log.write
+            data:
+              message: >
+                Blueprint Debug: Smart thermostat went to {{ trigger.to_state.state }}.
+                Setting fan to idle mode with speed: {{ idle_fan_speed }}
+              level: warning
           - service: climate.set_hvac_mode
             target:
               entity_id: !input fan_climate_entity
             data:
               hvac_mode: fan_only
+          - delay:
+              milliseconds: 500
           - service: climate.set_fan_mode
             target:
               entity_id: !input fan_climate_entity
             data:
               fan_mode: !input idle_fan_speed
+          - service: select.select_option
+            target:
+              entity_id: !input fan_warm_level_entity
+            data:
+              option: !input idle_warm_level
           - service: climate.set_temperature
             target:
               entity_id: !input fan_climate_entity
@@ -297,6 +313,13 @@ action:
               entity_id: !input fan_climate_entity
             data:
               swing_mode: !input swing_mode
+          # Debug: Log what actually happened
+          - service: system_log.write
+            data:
+              message: >
+                Blueprint Debug: After setting - HVAC mode: {{ states(fan_entity) }}, 
+                Fan mode: {{ state_attr(fan_entity, 'fan_mode') }}
+              level: warning
 
       # W100 Toggle Heat/Fan Mode
       - conditions:
