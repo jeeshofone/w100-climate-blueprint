@@ -679,11 +679,11 @@ action:
           - condition: state
             entity_id: !input smart_thermostat_entity
             state: heat
-          # Prevent running if we just ran the workaround
+          # Prevent running if we just ran the workaround (check last 5 minutes)
           - condition: template
             value_template: >
-              {% set last_changed = states.automation[context.this.entity_id].last_triggered %}
-              {{ last_changed is none or (now() - last_changed).total_seconds() > 300 }}
+              {% set last_changed = state_attr('automation.' ~ context.this.entity_id.split('.')[1], 'last_triggered') %}
+              {{ last_changed is none or (now() - as_datetime(last_changed)).total_seconds() > 300 }}
           - condition: template
             value_template: >
               {% set fan_temp = state_attr(fan_entity, 'current_temperature') | float(0) %}
