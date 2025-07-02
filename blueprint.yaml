@@ -158,6 +158,12 @@ trigger:
     to:
       - "idle"
       - "off"
+  # Smart thermostat hvac_action trigger
+  - platform: state
+    entity_id: !input smart_thermostat_entity
+    attribute: hvac_action
+    id: smart_thermostat_state
+    to: "idle"
   # W100 button triggers
   - platform: mqtt
     topic: zigbee2mqtt/{{ w100_name }}/action
@@ -278,6 +284,20 @@ action:
       - conditions:
           - condition: trigger
             id: smart_thermostat_state
+          - condition: or
+            conditions:
+              - condition: state
+                entity_id: !input smart_thermostat_entity
+                state: "off"
+              - condition: and
+                conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: "idle"
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    attribute: hvac_action
+                    state: "idle"
         sequence:
           # Debug: Log what we're about to do
           - service: system_log.write
@@ -292,12 +312,14 @@ action:
             data:
               hvac_mode: fan_only
           - delay:
-              milliseconds: 500
+              milliseconds: 1000
           - service: climate.set_fan_mode
             target:
               entity_id: !input fan_climate_entity
             data:
               fan_mode: !input idle_fan_speed
+          - delay:
+              milliseconds: 500
           - service: select.select_option
             target:
               entity_id: !input fan_warm_level_entity
@@ -313,12 +335,21 @@ action:
               entity_id: !input fan_climate_entity
             data:
               swing_mode: !input swing_mode
+          # Force another fan mode set after all other settings
+          - delay:
+              milliseconds: 500
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              fan_mode: !input idle_fan_speed
           # Debug: Log what actually happened
           - service: system_log.write
             data:
               message: >
                 Blueprint Debug: After setting - HVAC mode: {{ states(fan_entity) }}, 
-                Fan mode: {{ state_attr(fan_entity, 'fan_mode') }}
+                Fan mode: {{ state_attr(fan_entity, 'fan_mode') }},
+                Smart thermostat state: {{ states(smart_entity) }}
               level: warning
 
       # W100 Toggle Heat/Fan Mode
