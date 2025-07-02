@@ -139,6 +139,7 @@ variables:
   backup_humidity_entity: !input backup_humidity_sensor
   idle_fan_speed: !input idle_fan_speed
   idle_warm_level: !input idle_warm_level
+  heating_temp: !input heating_temperature
 
 alias: "{{ w100_name }} Fan Control"
 description: "PID-controlled fan with {{ w100_name }} remote integration"
@@ -217,6 +218,15 @@ trigger:
     minutes: '/2'
     seconds: '0'
     id: w100_humidity
+  # Fan temperature monitor for stuck heater workaround
+  - platform: state
+    entity_id: !input fan_climate_entity
+    attribute: current_temperature
+    id: fan_temp_monitor
+  - platform: time_pattern
+    minutes: '/1'
+    seconds: '30'
+    id: fan_temp_monitor
 
 condition: []
 
@@ -661,3 +671,54 @@ action:
             data:
               topic: zigbee2mqtt/{{ w100_name }}/set
               payload: '{"external_humidity": {{ states(humidity_entity) | round(0) }}}'
+      
+      # Fan Temperature Monitor - Workaround for stuck heater
+      - conditions:
+          - condition: trigger
+            id: fan_temp_monitor
+          - condition: state
+            entity_id: !input smart_thermostat_entity
+            state: heat
+          - condition: template
+            value_template: >
+              {% set fan_temp = state_attr(fan_entity, 'current_temperature') | float(0) %}
+              {% set room_temp = state_attr(smart_entity, 'current_temperature') | float(0) %}
+              {% set fan_setpoint = state_attr(fan_entity, 'temperature') | float(0) %}
+              {{ fan_temp >= 29.5 and fan_temp >= (fan_setpoint - 0.5) and room_temp < 29 and (fan_temp - room_temp) > 2 }}
+        sequence:
+          - service: system_log.write
+            data:
+              message: >
+                Blueprint Debug: Fan temp monitor triggered. 
+                Fan temp: {{ state_attr(fan_entity, 'current_temperature') }}°C, 
+                Room temp: {{ state_attr(smart_entity, 'current_temperature') }}°C.
+                Fan thinks it reached setpoint but room is cooler. Forcing air circulation.
+              level: warning
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input smart_thermostat_entity
+            data:
+              hvac_mode: "off"
+          - delay:
+              seconds: 5
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              hvac_mode: fan_only
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input fan_climate_entity
+            data:
+              fan_mode: "6"
+          - delay:
+              minutes: 2
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input smart_thermostat_entity
+            data:
+              hvac_mode: heat
+          - service: system_log.write
+            data:
+              message: "Blueprint Debug: Air circulation complete. Resuming normal heating."
+              level: warning
