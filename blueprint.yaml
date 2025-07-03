@@ -317,11 +317,6 @@ action:
             entity_id: !input heat_mode_boolean
             state: "off"
         sequence:
-          - service: system_log.write
-            data:
-              message: >
-                Blueprint Debug: Heat mode turned OFF. Setting fan to idle speed: {{ idle_fan_speed }}
-              level: warning
           - service: climate.set_hvac_mode
             target:
               entity_id: !input fan_climate_entity
@@ -383,13 +378,6 @@ action:
                     attribute: hvac_action
                     state: "idle"
         sequence:
-          # Debug: Log what we're about to do
-          - service: system_log.write
-            data:
-              message: >
-                Blueprint Debug: Smart thermostat went to {{ trigger.to_state.state }}.
-                Setting fan to idle mode with speed: {{ idle_fan_speed }}
-              level: warning
           - service: climate.set_hvac_mode
             target:
               entity_id: !input fan_climate_entity
@@ -427,14 +415,6 @@ action:
               entity_id: !input fan_climate_entity
             data:
               fan_mode: !input idle_fan_speed
-          # Debug: Log what actually happened
-          - service: system_log.write
-            data:
-              message: >
-                Blueprint Debug: After setting - HVAC mode: {{ states(fan_entity) }}, 
-                Fan mode: {{ state_attr(fan_entity, 'fan_mode') }},
-                Smart thermostat state: {{ states(smart_entity) }}
-              level: warning
 
       # W100 Toggle Heat/Fan Mode
       - conditions:
@@ -613,11 +593,23 @@ action:
           - condition: trigger
             id: w100_sync
         sequence:
+          - variables:
+              current_sensor_mode: "{{ states('select.' ~ w100_name ~ '_sensor') }}"
+              current_ext_temp: "{{ states('number.' ~ w100_name ~ '_external_temperature') | int(0) }}"
+              smart_mode: "{{ states(smart_entity) }}"
+              target_temp: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
+              fan_speed: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
           - choose:
               - conditions:
                   - condition: state
                     entity_id: !input smart_thermostat_entity
                     state: heat
+                  - condition: or
+                    conditions:
+                      - condition: template
+                        value_template: "{{ current_sensor_mode != 'external' }}"
+                      - condition: template
+                        value_template: "{{ current_ext_temp != target_temp }}"
                 sequence:
                   - service: select.select_option
                     target:
@@ -628,16 +620,22 @@ action:
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
-                      value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
+                      value: "{{ target_temp }}"
                   - service: mqtt.publish
                     data:
                       topic: zigbee2mqtt/{{ w100_name }}/set
                       payload: >
-                        {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
+                        {"external_temperature": {{ target_temp }}}
               - conditions:
                   - condition: state
                     entity_id: !input smart_thermostat_entity
                     state: cool
+                  - condition: or
+                    conditions:
+                      - condition: template
+                        value_template: "{{ current_sensor_mode != 'internal' }}"
+                      - condition: template
+                        value_template: "{{ current_ext_temp != fan_speed }}"
                 sequence:
                   - service: select.select_option
                     target:
@@ -648,14 +646,15 @@ action:
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
-                      value: >
-                        {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
+                      value: "{{ fan_speed }}"
                   - service: mqtt.publish
                     data:
                       topic: zigbee2mqtt/{{ w100_name }}/set
                       payload: >
-                        {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int(1) }}}
+                        {"external_temperature": {{ fan_speed }}}
             default:
+              - condition: template
+                value_template: "{{ current_sensor_mode != 'internal' }}"
               - service: select.select_option
                 target:
                   entity_id: "select.{{ w100_name }}_sensor"
@@ -747,15 +746,20 @@ action:
           - condition: trigger
             id: w100_humidity
         sequence:
+          - variables:
+              current_humidity: "{{ states(humidity_entity) | round(0) }}"
+              w100_humidity: "{{ states('number.' ~ w100_name ~ '_external_humidity') | round(0) }}"
+          - condition: template
+            value_template: "{{ current_humidity != w100_humidity }}"
           - service: number.set_value
             target:
               entity_id: "number.{{ w100_name }}_external_humidity"
             data:
-              value: "{{ states(humidity_entity) | round(0) }}"
+              value: "{{ current_humidity }}"
           - service: mqtt.publish
             data:
               topic: zigbee2mqtt/{{ w100_name }}/set
-              payload: '{"external_humidity": {{ states(humidity_entity) | round(0) }}}'
+              payload: '{"external_humidity": {{ current_humidity }}}'
       
       # Fan Temperature Monitor - Workaround for stuck heater
       - conditions:
@@ -771,14 +775,6 @@ action:
               {% set fan_setpoint = state_attr(fan_entity, 'temperature') | float(0) %}
               {{ fan_temp >= 29.5 and fan_temp >= (fan_setpoint - 0.5) and room_temp < 29 and (fan_temp - room_temp) > 2 }}
         sequence:
-          - service: system_log.write
-            data:
-              message: >
-                Blueprint Debug: Fan temp monitor triggered. 
-                Fan temp: {{ state_attr(fan_entity, 'current_temperature') }}°C, 
-                Room temp: {{ state_attr(smart_entity, 'current_temperature') }}°C.
-                Fan thinks it reached setpoint but room is cooler. Forcing air circulation.
-              level: warning
           - service: climate.set_hvac_mode
             target:
               entity_id: !input smart_thermostat_entity
@@ -803,10 +799,6 @@ action:
               entity_id: !input smart_thermostat_entity
             data:
               hvac_mode: heat
-          - service: system_log.write
-            data:
-              message: "Blueprint Debug: Air circulation complete. Resuming normal heating."
-              level: warning
       
       # Smart Thermostat Temperature Change - Beep
       - conditions:

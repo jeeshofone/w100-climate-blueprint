@@ -1,5 +1,24 @@
 # Changelog
 
+All notable changes to the W100 Climate Blueprint will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.5] - 2024-12-29
+
+### Changed
+- Removed all debug logging for cleaner operation
+- Optimized W100 display sync to only update when values have changed
+- Optimized humidity sync to only update when value has changed
+- Reduced unnecessary MQTT traffic and network overhead
+
+### Improved
+- Better performance with fewer redundant updates
+- Cleaner logs without debug messages
+
+## [0.4] - 2024-12-29
+
 ## v0.4 - Beep Control Feature
 - Added comprehensive beep control with three modes:
   - Enable Beep: Always beep
