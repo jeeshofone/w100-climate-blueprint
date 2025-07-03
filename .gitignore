@@ -1,0 +1,47 @@
+# Authentication and keys
+ha-key
+*-key
+*.key
+*.pem
+*.cert
+
+# Home Assistant
+*.log
+*.db
+*.db-shm
+*.db-wal
+.storage/
+.cloud/
+.homeassistant/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Secrets
+secrets.yaml
+secrets.yml
+.env 
