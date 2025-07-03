@@ -1,6 +1,6 @@
 blueprint:
   name: Office Fan W100 Smart Control
-  description: v0.4 - Complete PID-controlled fan with W100 remote integration (Includes temperature sensor workaround and beep control)
+  description: v0.5 - Complete PID-controlled fan with W100 remote integration (Performance optimized, event-driven updates)
   domain: automation
   input:
     w100_device_name:
@@ -234,10 +234,6 @@ trigger:
     entity_id: !input fan_climate_entity
     attribute: fan_mode
     id: w100_sync
-  - platform: time_pattern
-    minutes: '*'
-    seconds: '/5'
-    id: w100_sync
   # W100 startup trigger
   - platform: homeassistant
     event: start
@@ -245,10 +241,6 @@ trigger:
   # W100 humidity sync trigger
   - platform: state
     entity_id: !input humidity_sensor
-    id: w100_humidity
-  - platform: time_pattern
-    minutes: '/2'
-    seconds: '0'
     id: w100_humidity
   # Fan temperature monitor for stuck heater workaround
   - platform: state

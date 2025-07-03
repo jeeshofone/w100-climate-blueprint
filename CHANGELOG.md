@@ -11,10 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed all debug logging for cleaner operation
 - Optimized W100 display sync to only update when values have changed
 - Optimized humidity sync to only update when value has changed
+- Removed unnecessary time pattern triggers for W100 sync (was every 5 seconds)
+- Removed unnecessary time pattern trigger for humidity sync (was every 2 minutes)
 - Reduced unnecessary MQTT traffic and network overhead
 
 ### Improved
-- Better performance with fewer redundant updates
+- Better performance with event-driven updates instead of polling
+- W100 display now only updates on actual value changes
 - Cleaner logs without debug messages
 
 ## [0.4] - 2024-12-29
