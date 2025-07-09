@@ -44,4 +44,7 @@ Thumbs.db
 # Secrets
 secrets.yaml
 secrets.yml
-.env 
+.env
+
+# Repository analysis files
+repomix-output.xml 
