@@ -1,6 +1,6 @@
 blueprint:
   name: Office Fan W100 Smart Control
-  description: v0.5 - Complete PID-controlled fan with W100 remote integration (Performance optimized, event-driven updates)
+  description: v0.10 - Complete PID-controlled fan with W100 remote integration (Fixed W100 display bouncing)
   domain: automation
   input:
     w100_device_name:
@@ -179,12 +179,7 @@ trigger:
     to:
       - "idle"
       - "off"
-  # Smart thermostat hvac_action trigger
-  - platform: state
-    entity_id: !input smart_thermostat_entity
-    attribute: hvac_action
-    id: smart_thermostat_state
-    to: "idle"
+
   # Smart thermostat temperature change trigger (for beep)
   - platform: state
     entity_id: !input smart_thermostat_entity
@@ -300,6 +295,24 @@ action:
                   - service: switch.turn_off
                     target:
                       entity_id: !input fan_beep_switch
+          # Force W100 display sync to show temperature
+          - delay:
+              milliseconds: 500
+          - service: select.select_option
+            target:
+              entity_id: "select.{{ w100_name }}_sensor"
+            data:
+              option: external
+          - service: number.set_value
+            target:
+              entity_id: "number.{{ w100_name }}_external_temperature"
+            data:
+              value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
+          - service: mqtt.publish
+            data:
+              topic: zigbee2mqtt/{{ w100_name }}/set
+              payload: >
+                {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
       
       # Office Fan Heat Mode Off
       - conditions:
@@ -355,6 +368,11 @@ action:
       - conditions:
           - condition: trigger
             id: smart_thermostat_state
+          - condition: not
+            conditions:
+              - condition: state
+                entity_id: !input smart_thermostat_entity
+                state: heat
           - condition: or
             conditions:
               - condition: state
@@ -439,7 +457,7 @@ action:
                 target:
                   entity_id: "select.{{ w100_name }}_sensor"
                 data:
-                  option: internal
+                  option: external
               - service: number.set_value
                 target:
                   entity_id: "number.{{ w100_name }}_external_temperature"
@@ -504,7 +522,7 @@ action:
                     target:
                       entity_id: "select.{{ w100_name }}_sensor"
                     data:
-                      option: internal
+                      option: external
                   - service: number.set_value
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
@@ -568,7 +586,7 @@ action:
                     target:
                       entity_id: "select.{{ w100_name }}_sensor"
                     data:
-                      option: internal
+                      option: external
                   - service: number.set_value
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
@@ -625,7 +643,7 @@ action:
                   - condition: or
                     conditions:
                       - condition: template
-                        value_template: "{{ current_sensor_mode != 'internal' }}"
+                        value_template: "{{ current_sensor_mode != 'external' }}"
                       - condition: template
                         value_template: "{{ current_ext_temp != fan_speed }}"
                 sequence:
@@ -633,7 +651,7 @@ action:
                     target:
                       entity_id: "select.{{ w100_name }}_sensor"
                     data:
-                      option: internal
+                      option: external
                   - service: number.set_value
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
@@ -645,13 +663,24 @@ action:
                       payload: >
                         {"external_temperature": {{ fan_speed }}}
             default:
+              # When smart thermostat is off or in other states, still use external mode to show fan speed
               - condition: template
-                value_template: "{{ current_sensor_mode != 'internal' }}"
+                value_template: "{{ current_sensor_mode != 'external' or current_ext_temp != fan_speed }}"
               - service: select.select_option
                 target:
                   entity_id: "select.{{ w100_name }}_sensor"
                 data:
-                  option: internal
+                  option: external
+              - service: number.set_value
+                target:
+                  entity_id: "number.{{ w100_name }}_external_temperature"
+                data:
+                  value: "{{ fan_speed }}"
+              - service: mqtt.publish
+                data:
+                  topic: zigbee2mqtt/{{ w100_name }}/set
+                  payload: >
+                    {"external_temperature": {{ fan_speed }}}
 
       # W100 Initialize Display on Startup
       - conditions:
@@ -684,7 +713,7 @@ action:
                 target:
                   entity_id: "select.{{ w100_name }}_sensor"
                 data:
-                  option: internal
+                  option: external
               - service: number.set_value
                 target:
                   entity_id: "number.{{ w100_name }}_external_temperature"

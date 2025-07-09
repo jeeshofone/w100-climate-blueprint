@@ -1,7 +1,7 @@
 # W100 Climate Blueprint
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1+-blue.svg)](https://www.home-assistant.io/)
-[![Blueprint](https://img.shields.io/badge/Blueprint-v0.4-green.svg)](blueprint.yaml)
+[![Blueprint](https://img.shields.io/badge/Blueprint-v0.10-green.svg)](blueprint.yaml)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
 A comprehensive Home Assistant blueprint for intelligent climate control using PID-controlled fan/heater combos with W100 Zigbee remote integration. Features advanced temperature sensor workarounds, smart beep control, and seamless display synchronization.
@@ -176,8 +176,9 @@ input_boolean:
 
 #### Smart Display Sync
 - Real-time temperature and humidity updates on W100
-- Automatic mode switching between internal/external sensor readings
-- Startup initialization and periodic sync
+- Always uses external sensor mode for custom value display
+- Shows temperature setpoint in heat mode, fan speed (1-9) in cool mode
+- Startup initialization and automatic sync on value changes
 
 ## Troubleshooting
 
@@ -245,6 +246,12 @@ idle_temperature: 21
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
+- **v0.10**: Fixed W100 display bouncing by removing conflicting hvac_action trigger
+- **v0.9**: Fixed Smart Thermostat PID compatibility - reverted to state checks instead of hvac_mode
+- **v0.8**: Fixed W100 showing fan speed when thermostat in heat mode but idle
+- **v0.7**: Fixed W100 display flip-flopping by using hvac_mode instead of state checks
+- **v0.6**: Fixed W100 display mode logic - always uses external mode for custom values
+- **v0.5**: Performance optimized with event-driven updates, removed debug logging
 - **v0.4**: Beep control feature with three configurable modes
 - **v0.3**: Temperature sensor workaround for stuck heater scenarios  
 - **v0.2**: Performance optimization with parallel mode
