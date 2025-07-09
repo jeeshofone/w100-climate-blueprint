@@ -1,10 +1,18 @@
 # W100 Climate Blueprint
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1+-blue.svg)](https://www.home-assistant.io/)
-[![Blueprint](https://img.shields.io/badge/Blueprint-v0.10-green.svg)](blueprint.yaml)
+[![Blueprint](https://img.shields.io/badge/Blueprint-v0.10-red.svg)](blueprint.yaml)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
 A comprehensive Home Assistant blueprint for intelligent climate control using PID-controlled fan/heater combos with W100 Zigbee remote integration. Features advanced temperature sensor workarounds, smart beep control, and seamless display synchronization.
+
+## ⚠️ CRITICAL NOTICE - v0.10 Status
+
+**W100 display bouncing issue is NOT fully resolved in v0.10** despite claims in the changelog. Detailed analysis reveals the root cause remains unfixed. See [ROUTING_ANALYSIS.md](ROUTING_ANALYSIS.md) and [TRIGGER_SIMULATION.md](TRIGGER_SIMULATION.md) for technical details.
+
+**Status**: 🔴 **Known Issue** - Display may still bounce between temperature and fan speed values  
+**Workaround**: Use manual W100 controls or wait for v0.11 with proper fix  
+**Root Cause**: Overly broad `w100_sync` trigger still fires on hvac_action changes
 
 ## Features
 
@@ -246,7 +254,7 @@ idle_temperature: 21
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-- **v0.10**: Fixed W100 display bouncing by removing conflicting hvac_action trigger
+- **v0.10**: ⚠️ **INCOMPLETE FIX** - Claims to fix W100 display bouncing but root cause remains (see ROUTING_ANALYSIS.md)
 - **v0.9**: Fixed Smart Thermostat PID compatibility - reverted to state checks instead of hvac_mode
 - **v0.8**: Fixed W100 showing fan speed when thermostat in heat mode but idle
 - **v0.7**: Fixed W100 display flip-flopping by using hvac_mode instead of state checks

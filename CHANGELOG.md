@@ -7,21 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10] - 2025-01-03
 
-### Fixed
-- **CRITICAL**: W100 display bouncing every few seconds resolved
-- Removed conflicting hvac_action trigger that caused infinite loop
-- The issue: hvac_action "idle" trigger fired while state was "heat", causing conflicting actions
-- W100 display now stays stable in heat mode regardless of hvac_action (idle/heating)
+### ⚠️ CRITICAL ISSUE - INCOMPLETE FIX
+- **MISLEADING**: Claims to fix W100 display bouncing but root cause remains unfixed
+- **ANALYSIS**: Detailed code analysis reveals the main trigger (line 222) was NOT removed
+- **STATUS**: W100 display will continue bouncing between temperature and fan speed
+- **EVIDENCE**: See ROUTING_ANALYSIS.md and TRIGGER_SIMULATION.md for proof
 
-### Root Cause
-- Smart thermostat hvac_action bounces between "idle" and "heating" when satisfied
-- This triggered "Smart Thermostat Idle/Off" action even when state was "heat"
-- Created feedback loop: hvac_action→fan mode change→W100 sync→repeat
+### What Was Actually Changed
+- Removed hvac_action attribute trigger (lines 182-186) - this was NOT the main problem
+- Added forced W100 sync after heat mode activation
+- Enhanced display logic conditions
 
-### Solution
-- Removed hvac_action "idle" trigger from smart_thermostat_state ID
-- Now only actual state changes ("idle"/"off") trigger fan mode changes
-- W100 display remains consistent when thermostat is in heat mode but idle
+### Root Cause Still Present
+- Line 222-223: w100_sync trigger still fires on ANY smart thermostat state change
+- hvac_action bouncing (heating ↔ idle) continues to trigger display updates
+- Default logic flaw causes fan speed display even when in heat mode
+- Creates infinite cycle: hvac_action change → w100_sync → display flip → repeat
+
+### Required Fix
+- See PROPER_FIX.md for the actual solution needed in v0.11
+- Must fix overly broad trigger and default logic conditions
 
 ## [0.9] - 2025-01-03
 
