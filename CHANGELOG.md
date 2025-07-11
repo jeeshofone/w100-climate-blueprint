@@ -5,6 +5,37 @@ All notable changes to the W100 Climate Blueprint will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11] - 2025-01-XX
+
+### 🔴 CRITICAL FIXES - MAJOR RELEASE
+- **FIXED**: OFF mode W100 control completely rewritten - buttons now fully functional
+- **FIXED**: W100 display bouncing finally resolved - addressed actual root cause
+- **FIXED**: Toggle button behavior corrected (OFF → HEAT, not OFF → COOL)
+- **FIXED**: Direct fan speed control when thermostat is OFF
+
+### Breaking Changes
+- OFF mode now provides full W100 remote functionality (was completely broken)
+- Toggle button behavior changed to correct logic (OFF ↔ HEAT cycle)
+- Removed dead code for non-existent 'idle' state
+
+### Technical Improvements
+- Replaced overly broad trigger with specific state transitions
+- Added debouncing (100ms) to prevent rapid successive updates
+- Standardized state checking throughout blueprint
+- Removed redundant and dead code sections
+
+### Root Causes Addressed
+- Line 222-223: Replaced broad trigger that fired on hvac_action changes
+- Lines 479-482, 543-546: Added default cases for OFF state handling
+- Lines 451-455: Fixed toggle logic for correct state transitions
+- Lines 180-181: Removed non-existent 'idle' state from triggers
+
+### User Experience
+- W100 remote now fully functional in all thermostat modes
+- No more display bouncing between temperature and fan speed
+- Intuitive toggle behavior (OFF ↔ HEAT cycle)
+- Seamless mode switching with appropriate display values
+
 ## [0.10] - 2025-01-03
 
 ### ⚠️ CRITICAL ISSUE - INCOMPLETE FIX
