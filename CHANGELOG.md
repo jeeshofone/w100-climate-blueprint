@@ -5,6 +5,26 @@ All notable changes to the W100 Climate Blueprint will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2025-01-XX
+
+### 🔴 CRITICAL PATCH - Remove MQTT Commands
+- **FIXED**: Removed all MQTT publish commands - use only Home Assistant services
+- **FIXED**: Added template defaults to prevent None value errors  
+- **ELIMINATED**: All Zigbee timeout errors for problematic W100 devices
+- **SIMPLIFIED**: Cleaner, more reliable communication using HA services only
+
+### Technical Changes
+- Removed all `mqtt.publish` service calls throughout blueprint
+- All W100 updates now use `number.set_value` and `select.select_option` services
+- Added `| default(22)` to temperature templates to prevent None errors
+- Maintained identical functionality with improved reliability
+
+### User Experience  
+- No more "ZCL command timeout" errors in logs
+- More reliable W100 display updates
+- Identical functionality with better stability
+- Works consistently across all W100 device variations
+
 ## [0.11] - 2025-01-XX
 
 ### 🔴 CRITICAL FIXES - MAJOR RELEASE

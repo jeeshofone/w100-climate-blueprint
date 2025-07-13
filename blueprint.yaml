@@ -1,6 +1,6 @@
 blueprint:
   name: Office Fan W100 Smart Control
-  description: v0.11 - Complete PID-controlled fan with W100 remote integration (FIXED - OFF mode control & display bouncing)
+  description: v0.11.2 - Complete PID-controlled fan with W100 remote integration (FIXED - Removed MQTT commands, HA services only)
   domain: automation
   input:
     w100_device_name:
@@ -307,12 +307,7 @@ action:
             target:
               entity_id: "number.{{ w100_name }}_external_temperature"
             data:
-              value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
-          - service: mqtt.publish
-            data:
-              topic: zigbee2mqtt/{{ w100_name }}/set
-              payload: >
-                {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
+              value: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(0) }}"
       
       # Office Fan Heat Mode Off
       - conditions:
@@ -470,11 +465,6 @@ action:
                 data:
                   value: >
                     {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
-              - service: mqtt.publish
-                data:
-                  topic: zigbee2mqtt/{{ w100_name }}/set
-                  payload: >
-                    {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int(1) }}}
 
       # W100 Increase Temp/Fan Speed
       - conditions:
@@ -506,11 +496,6 @@ action:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
                       value: "{{ new_temp }}"
-                  - service: mqtt.publish
-                    data:
-                      topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: >
-                        {"external_temperature": {{ new_temp }}}
               - conditions:
                   - condition: state
                     entity_id: !input smart_thermostat_entity
@@ -534,11 +519,6 @@ action:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
                       value: "{{ new_fan }}"
-                  - service: mqtt.publish
-                    data:
-                      topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: >
-                        {"external_temperature": {{ new_fan }}}
             default:
               # Handle OFF mode - control fan directly
               - variables:
@@ -559,11 +539,6 @@ action:
                   entity_id: "number.{{ w100_name }}_external_temperature"
                 data:
                   value: "{{ new_fan }}"
-              - service: mqtt.publish
-                data:
-                  topic: zigbee2mqtt/{{ w100_name }}/set
-                  payload: >
-                    {"external_temperature": {{ new_fan }}}
 
       # W100 Decrease Temp/Fan Speed
       - conditions:
@@ -595,11 +570,6 @@ action:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
                       value: "{{ new_temp }}"
-                  - service: mqtt.publish
-                    data:
-                      topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: >
-                        {"external_temperature": {{ new_temp }}}
               - conditions:
                   - condition: state
                     entity_id: !input smart_thermostat_entity
@@ -623,11 +593,6 @@ action:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
                       value: "{{ new_fan }}"
-                  - service: mqtt.publish
-                    data:
-                      topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: >
-                        {"external_temperature": {{ new_fan }}}
             default:
               # Handle OFF mode - control fan directly
               - variables:
@@ -648,11 +613,6 @@ action:
                   entity_id: "number.{{ w100_name }}_external_temperature"
                 data:
                   value: "{{ new_fan }}"
-              - service: mqtt.publish
-                data:
-                  topic: zigbee2mqtt/{{ w100_name }}/set
-                  payload: >
-                    {"external_temperature": {{ new_fan }}}
 
       # W100 Sync Display Values
       - conditions:
@@ -666,7 +626,7 @@ action:
               current_sensor_mode: "{{ states('select.' ~ w100_name ~ '_sensor') }}"
               current_ext_temp: "{{ states('number.' ~ w100_name ~ '_external_temperature') | int(0) }}"
               smart_mode: "{{ states(smart_entity) }}"
-              target_temp: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
+              target_temp: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(0) }}"
               fan_speed: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
           - choose:
               - conditions:
@@ -690,11 +650,6 @@ action:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
                       value: "{{ target_temp }}"
-                  - service: mqtt.publish
-                    data:
-                      topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: >
-                        {"external_temperature": {{ target_temp }}}
               - conditions:
                   - condition: state
                     entity_id: !input smart_thermostat_entity
@@ -716,11 +671,6 @@ action:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
                       value: "{{ fan_speed }}"
-                  - service: mqtt.publish
-                    data:
-                      topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: >
-                        {"external_temperature": {{ fan_speed }}}
             default:
               # Only show fan speed when NOT in heat mode
               - condition: and
@@ -742,11 +692,6 @@ action:
                   entity_id: "number.{{ w100_name }}_external_temperature"
                 data:
                   value: "{{ fan_speed }}"
-              - service: mqtt.publish
-                data:
-                  topic: zigbee2mqtt/{{ w100_name }}/set
-                  payload: >
-                    {"external_temperature": {{ fan_speed }}}
 
       # W100 Initialize Display on Startup
       - conditions:
@@ -768,12 +713,7 @@ action:
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
-                      value: "{{ state_attr(smart_entity, 'temperature') | round(0) }}"
-                  - service: mqtt.publish
-                    data:
-                      topic: zigbee2mqtt/{{ w100_name }}/set
-                      payload: >
-                        {"external_temperature": {{ state_attr(smart_entity, "temperature") | round(0) }}}
+                      value: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(0) }}"
             default:
               - service: select.select_option
                 target:
@@ -786,11 +726,6 @@ action:
                 data:
                   value: >
                     {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
-              - service: mqtt.publish
-                data:
-                  topic: zigbee2mqtt/{{ w100_name }}/set
-                  payload: >
-                    {"external_temperature": {{ state_attr(fan_entity, "fan_mode") | int(1) }}}
           - service: number.set_value
             target:
               entity_id: "number.{{ w100_name }}_external_humidity"
@@ -801,11 +736,6 @@ action:
                 {% else %}
                   50
                 {% endif %}
-          - service: mqtt.publish
-            data:
-              topic: zigbee2mqtt/{{ w100_name }}/set
-              payload: >
-                {"external_humidity": {% if backup_humidity_entity %}{{ states(backup_humidity_entity) | round(0) }}{% else %}50{% endif %}}
           # Set beep mode on startup
           - choose:
               - conditions:
@@ -843,10 +773,6 @@ action:
               entity_id: "number.{{ w100_name }}_external_humidity"
             data:
               value: "{{ current_humidity }}"
-          - service: mqtt.publish
-            data:
-              topic: zigbee2mqtt/{{ w100_name }}/set
-              payload: '{"external_humidity": {{ current_humidity }}}'
       
       # Fan Temperature Monitor - Workaround for stuck heater
       - conditions:
