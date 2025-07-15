@@ -1,6 +1,6 @@
 blueprint:
   name: Office Fan W100 Smart Control
-  description: v0.11.2 - Complete PID-controlled fan with W100 remote integration (FIXED - Removed MQTT commands, HA services only)
+  description: v0.11.3 - Complete PID-controlled fan with W100 remote integration (FIXED - 0.5°C precision temperature control)
   domain: automation
   input:
     w100_device_name:
@@ -307,7 +307,7 @@ action:
             target:
               entity_id: "number.{{ w100_name }}_external_temperature"
             data:
-              value: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(0) }}"
+              value: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(1) }}"
       
       # Office Fan Heat Mode Off
       - conditions:
@@ -478,9 +478,9 @@ action:
                     state: heat
                 sequence:
                   - variables:
-                      current_temp: "{{ state_attr(smart_entity, 'temperature') | int }}"
-                      max_temp: "{{ state_attr(smart_entity, 'max_temp') | int }}"
-                      new_temp: "{{ [current_temp + 1, max_temp] | min }}"
+                      current_temp: "{{ state_attr(smart_entity, 'temperature') | float }}"
+                      max_temp: "{{ state_attr(smart_entity, 'max_temp') | float }}"
+                      new_temp: "{{ [current_temp + 0.5, max_temp] | min }}"
                   - service: climate.set_temperature
                     target:
                       entity_id: !input smart_thermostat_entity
@@ -552,9 +552,9 @@ action:
                     state: heat
                 sequence:
                   - variables:
-                      current_temp: "{{ state_attr(smart_entity, 'temperature') | int }}"
-                      min_temp: "{{ state_attr(smart_entity, 'min_temp') | int }}"
-                      new_temp: "{{ [current_temp - 1, min_temp] | max }}"
+                      current_temp: "{{ state_attr(smart_entity, 'temperature') | float }}"
+                      min_temp: "{{ state_attr(smart_entity, 'min_temp') | float }}"
+                      new_temp: "{{ [current_temp - 0.5, min_temp] | max }}"
                   - service: climate.set_temperature
                     target:
                       entity_id: !input smart_thermostat_entity
@@ -624,9 +624,9 @@ action:
               milliseconds: 100
           - variables:
               current_sensor_mode: "{{ states('select.' ~ w100_name ~ '_sensor') }}"
-              current_ext_temp: "{{ states('number.' ~ w100_name ~ '_external_temperature') | int(0) }}"
+              current_ext_temp: "{{ states('number.' ~ w100_name ~ '_external_temperature') | float(0) }}"
               smart_mode: "{{ states(smart_entity) }}"
-              target_temp: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(0) }}"
+              target_temp: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(1) }}"
               fan_speed: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
           - choose:
               - conditions:
@@ -713,7 +713,7 @@ action:
                     target:
                       entity_id: "number.{{ w100_name }}_external_temperature"
                     data:
-                      value: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(0) }}"
+                      value: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(1) }}"
             default:
               - service: select.select_option
                 target:

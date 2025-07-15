@@ -5,6 +5,25 @@ All notable changes to the W100 Climate Blueprint will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2025-01-XX
+
+### 🎯 ENHANCEMENT - Precise Temperature Control
+- **IMPROVED**: W100 +/- buttons now change temperature by 0.5°C instead of 1°C
+- **ENHANCED**: W100 display shows temperature with 1 decimal place (e.g., 22.5°C)
+- **REFINED**: More precise temperature control for better comfort
+
+### Technical Changes
+- Changed temperature increment/decrement from 1°C to 0.5°C
+- Updated temperature display precision from round(0) to round(1)
+- Changed temperature variables from int to float for decimal support
+- Maintained all existing functionality with improved precision
+
+### User Experience
+- Finer temperature control via W100 remote
+- More precise temperature display on W100
+- Better temperature regulation with smaller adjustments
+- Smoother temperature transitions
+
 ## [0.11.2] - 2025-01-XX
 
 ### 🔴 CRITICAL PATCH - Remove MQTT Commands

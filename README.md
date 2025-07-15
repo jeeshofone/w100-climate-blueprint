@@ -1,7 +1,7 @@
 # W100 Climate Blueprint
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1+-blue.svg)](https://www.home-assistant.io/)
-[![Blueprint](https://img.shields.io/badge/Blueprint-v0.11.2-green.svg)](blueprint.yaml)
+[![Blueprint](https://img.shields.io/badge/Blueprint-v0.11.3-green.svg)](blueprint.yaml)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
 A comprehensive Home Assistant blueprint for intelligent climate control using PID-controlled fan/heater combos with W100 Zigbee remote integration. Features advanced temperature sensor workarounds, smart beep control, and seamless display synchronization.
@@ -258,6 +258,7 @@ idle_temperature: 21
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
+- **v0.11.3**: ✅ **0.5°C PRECISION** - W100 buttons now adjust temperature by 0.5°C for finer control
 - **v0.11.2**: ✅ **MQTT REMOVED** - Eliminated timeout errors by using only HA services
 - **v0.11**: ✅ **ALL ISSUES FIXED** - Complete rewrite of OFF mode control & proper display bouncing fix
 - **v0.10**: ⚠️ **INCOMPLETE FIX** - Claims to fix W100 display bouncing but root cause remains (see ROUTING_ANALYSIS.md)
