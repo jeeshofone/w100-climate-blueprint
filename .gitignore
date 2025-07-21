@@ -47,6 +47,10 @@ secrets.yml
 .env
 
 # Repository analysis files
-repomix-output.xml # HA
-CS documentation (local reference only)
+repomix-output.xml
+
+# HACS documentation (local reference only)
 HACS DOCS - do not track or add to git repo - for local reference only/
+
+# Kiro IDE files
+.kiro/
