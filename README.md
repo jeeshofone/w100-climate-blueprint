@@ -3,7 +3,7 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue.svg)](https://www.home-assistant.io/)
 [![HACS](https://img.shields.io/badge/HACS-Integration-orange.svg)](https://hacs.xyz/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
-[![GitHub Release](https://img.shields.io/github/release/username/w100-smart-control.svg)](https://github.com/username/w100-smart-control/releases)
+[![GitHub Release](https://img.shields.io/github/release/w100-climate-blueprint/w100-smart-control.svg)](https://github.com/w100-climate-blueprint/w100-smart-control/releases)
 
 A comprehensive Home Assistant integration for seamless climate control using Aqara W100 devices. Transform your W100 remote into a powerful climate controller with GUI configuration, automatic device discovery, and all the advanced features from the proven blueprint - now with zero YAML configuration required.
 
@@ -79,7 +79,7 @@ The integration can work with existing climate entities or create new generic th
 ### Method 2: Manual Installation
 
 1. **Download Integration:**
-   - Download the latest release from [GitHub Releases](https://github.com/username/w100-smart-control/releases)
+   - Download the latest release from [GitHub Releases](https://github.com/w100-climate-blueprint/w100-smart-control/releases)
    - Extract the `custom_components/w100_smart_control` folder
 
 2. **Copy to Home Assistant:**
@@ -363,8 +363,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 ### Community Support
-- 🐛 **Issues**: [GitHub Issues](https://github.com/username/w100-smart-control/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/username/w100-smart-control/discussions)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/w100-climate-blueprint/w100-smart-control/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/w100-climate-blueprint/w100-smart-control/discussions)
 - 📖 **Documentation**: This README and integration help text
 
 ### Show Your Support
