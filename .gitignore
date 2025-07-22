@@ -46,11 +46,36 @@ secrets.yaml
 secrets.yml
 .env
 
-# Repository analysis files
+# Development and analysis files
 repomix-output.xml
+*.md.backup
+*.yaml.backup
 
 # HACS documentation (local reference only)
 HACS DOCS - do not track or add to git repo - for local reference only/
 
-# Kiro IDE files
+# Development tools
 .kiro/
+.vscode/settings.json
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Integration testing
+tests/__pycache__/
+tests/.pytest_cache/
+
+# Blueprint legacy files (kept for reference)
+blueprint.yaml
+bedroom-dashboard.yaml
+nursery-dashboard.yaml
+office-dashboard.yaml
+generic\ thermostat\ doc
+w100.md
+*_ANALYSIS.md
+*_FIX.md
+*_IMPLEMENTATION*.md
+*_TESTING*.md
+*_SIMULATION.md
+*_SUMMARY.md
+BEEP_CONTROL_FEATURE.md

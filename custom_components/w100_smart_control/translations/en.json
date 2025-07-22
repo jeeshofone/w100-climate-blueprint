@@ -1,0 +1,90 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "W100 Smart Control Setup",
+        "description": "Set up your Aqara W100 Smart Control integration. Make sure you have Zigbee2MQTT configured and your W100 devices paired.",
+        "data": {
+          "name": "Integration Name"
+        }
+      },
+      "device_selection": {
+        "title": "Select W100 Device",
+        "description": "Choose the W100 device you want to configure. Found {device_count} accessible W100 device(s) via Zigbee2MQTT.",
+        "data": {
+          "w100_device_name": "W100 Device"
+        }
+      },
+      "climate_selection": {
+        "title": "Climate Entity Configuration",
+        "description": "Choose how to configure the climate entity. Found {climate_count} existing climate entities.",
+        "data": {
+          "climate_entity_type": "Climate Entity Type",
+          "existing_climate_entity": "Existing Climate Entity"
+        }
+      },
+      "generic_thermostat": {
+        "title": "Generic Thermostat Configuration",
+        "description": "Configure the generic thermostat that will be created for your W100 device.",
+        "data": {
+          "heater_switch": "Heater Switch Entity",
+          "temperature_sensor": "Temperature Sensor Entity",
+          "min_temp": "Minimum Temperature",
+          "max_temp": "Maximum Temperature",
+          "target_temp": "Default Target Temperature",
+          "cold_tolerance": "Cold Tolerance",
+          "hot_tolerance": "Hot Tolerance",
+          "precision": "Temperature Precision"
+        }
+      },
+      "customization": {
+        "title": "Customization Options",
+        "description": "Configure the behavior and preferences for your W100 device.",
+        "data": {
+          "heating_temperature": "Heating Temperature",
+          "idle_temperature": "Idle Temperature",
+          "heating_warm_level": "Heating Warm Level",
+          "idle_warm_level": "Idle Warm Level",
+          "idle_fan_speed": "Idle Fan Speed",
+          "swing_mode": "Swing Mode",
+          "beep_mode": "Beep Mode",
+          "humidity_sensor": "Humidity Sensor (Optional)",
+          "backup_humidity_sensor": "Backup Humidity Sensor (Optional)"
+        }
+      }
+    },
+    "error": {
+      "mqtt_not_configured": "MQTT is not configured. Please set up MQTT integration first.",
+      "device_not_found": "Selected W100 device was not found.",
+      "device_not_accessible": "W100 device is not accessible via Zigbee2MQTT.",
+      "entity_not_found": "Selected entity was not found.",
+      "entity_not_accessible": "Selected entity is not accessible.",
+      "entity_required": "Please select a climate entity.",
+      "invalid_selection": "Invalid selection made.",
+      "discovery_failed": "Failed to discover W100 devices. Check that Zigbee2MQTT is running and accessible.",
+      "entity_discovery_failed": "Failed to discover entities.",
+      "no_devices_found": "No W100 devices found. Make sure your Aqara W100 devices are paired with Zigbee2MQTT and accessible via MQTT topics.",
+      "no_climate_entities": "No climate entities found. Please create a climate entity first or choose to create a generic thermostat.",
+      "no_climate_entities_available": "No climate entities are available. Please create a climate entity first or choose to create a generic thermostat instead.",
+      "not_climate_entity": "Selected entity is not a climate entity.",
+      "entity_unavailable": "Selected climate entity is currently unavailable.",
+      "heat_mode_not_supported": "Selected climate entity does not support heat mode, which is required for W100 control.",
+      "off_mode_not_supported": "Selected climate entity does not support off mode, which is required for W100 control.",
+      "temperature_control_not_supported": "Selected climate entity does not support temperature control, which is required for W100 control.",
+      "current_temperature_not_available": "Selected climate entity does not provide current temperature readings, which are required for W100 display updates.",
+      "invalid_temperature_range": "Selected climate entity has an invalid temperature range configuration.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This W100 device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "W100 Smart Control Options",
+        "description": "Configure options for your W100 Smart Control integration."
+      }
+    }
+  }
+}

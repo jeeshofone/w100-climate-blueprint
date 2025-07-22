@@ -1,280 +1,353 @@
-# W100 Climate Blueprint
+# Aqara W100 Smart Control Integration
 
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1+-blue.svg)](https://www.home-assistant.io/)
-[![Blueprint](https://img.shields.io/badge/Blueprint-v0.11.3-green.svg)](blueprint.yaml)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue.svg)](https://www.home-assistant.io/)
+[![HACS](https://img.shields.io/badge/HACS-Integration-orange.svg)](https://hacs.xyz/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
+[![GitHub Release](https://img.shields.io/github/release/username/w100-smart-control.svg)](https://github.com/username/w100-smart-control/releases)
 
-A comprehensive Home Assistant blueprint for intelligent climate control using PID-controlled fan/heater combos with W100 Zigbee remote integration. Features advanced temperature sensor workarounds, smart beep control, and seamless display synchronization.
+A comprehensive Home Assistant integration for seamless climate control using Aqara W100 devices. Transform your W100 remote into a powerful climate controller with GUI configuration, automatic device discovery, and all the advanced features from the proven blueprint - now with zero YAML configuration required.
 
-## ✅ v0.11 - ALL CRITICAL ISSUES FIXED
+## ✨ HACS Integration - Zero Configuration Required
 
-**Major release with comprehensive fixes for all identified issues:**
+**Transform your W100 setup from complex YAML to simple GUI configuration:**
 
-- ✅ **OFF Mode W100 Control**: W100 remote now fully functional when thermostat is OFF
-- ✅ **Display Bouncing**: Root cause finally addressed - no more bouncing between temperature and fan speed
-- ✅ **Toggle Button**: Correct behavior implemented (OFF ↔ HEAT cycle)
-- ✅ **Code Cleanup**: Removed dead code and optimized triggers
+- 🎯 **One-Click Installation**: Install directly through HACS with zero manual setup
+- 🖱️ **GUI Configuration**: Complete setup through Home Assistant's integration UI
+- 🔍 **Auto Discovery**: Automatically finds your W100 devices via Zigbee2MQTT
+- 🏠 **Built-in Thermostat**: Optionally creates generic thermostats - no external dependencies
+- 📱 **Multi-Device Support**: Configure multiple W100 devices independently
+- 🔄 **Blueprint Migration**: Easy migration from existing blueprint setups
 
-**Status**: 🟢 **Production Ready** - All core functionality working as expected  
-**Upgrade**: Highly recommended from v0.10 - fixes critical functionality failures
+**Status**: 🟢 **Ready for HACS** - All blueprint functionality preserved in modern integration format
 
 ## Features
 
-🌡️ **PID Temperature Control** - Precise temperature regulation using smart thermostat integration  
-🎛️ **W100 Remote Integration** - Full control via Zigbee remote with display sync  
-🔄 **Temperature Sensor Workaround** - Automatic detection and correction of stuck heater scenarios  
-🔊 **Smart Beep Control** - Configurable audio feedback modes  
-💨 **Dual Mode Operation** - Heat mode with temperature control, cool mode with fan speed control  
+🎯 **GUI Configuration** - Complete setup through Home Assistant's integration interface  
+🔍 **Auto Discovery** - Automatically detects W100 devices via Zigbee2MQTT  
+🏠 **Built-in Thermostat** - Creates generic thermostats with optimal W100 settings  
+🎛️ **W100 Remote Control** - Full button functionality with display synchronization  
+🌡️ **Precise Temperature Control** - 0.5°C increments for fine-tuned comfort  
+🔊 **Smart Beep Control** - Configurable audio feedback (Enable/Disable/On-Mode Change)  
+💨 **Dual Mode Operation** - Heat mode with temperature control, off mode with fan speed control  
 📊 **Real-time Display Sync** - Temperature, humidity, and status updates on W100 display  
-⚡ **Parallel Processing** - Optimized for responsive control with multiple concurrent triggers  
+📱 **Multi-Device Support** - Configure multiple W100 devices independently  
+🔄 **Advanced Features** - Stuck heater workaround, startup initialization, error handling  
 
-## Dependencies
-
-This blueprint requires the following Home Assistant integrations:
+## Requirements
 
 ### Required Components
 
-1. **[Smart Thermostat PID](https://github.com/ScratMan/HASmartThermostat)**
-   - Advanced PID controller for precise temperature control
-   - Install via HACS or manual installation
-
-2. **[Tuya Local](https://github.com/make-all/tuya-local)**
-   - For Kogan Smarterhome bladeless heater fan control
-   - Provides climate and switch entities for the fan
-
-3. **Zigbee2MQTT or ZHA**
-   - For W100 remote device integration
+1. **Zigbee2MQTT or ZHA**
+   - For W100 device communication and control
    - Required for remote control and display functionality
+
+2. **MQTT Integration** (if using Zigbee2MQTT)
+   - Built into Home Assistant
+   - Required for W100 device communication
 
 ### Compatible Hardware
 
-- **Kogan Smarterhome Bladeless Heater Fan** (via Tuya Local)
-- **W100 Zigbee Temperature/Humidity Remote** 
-- Any temperature sensor supported by Home Assistant
-- Any humidity sensor supported by Home Assistant
+- **Aqara W100 Zigbee Temperature/Humidity Remote**
+- Any climate entity supported by Home Assistant
+- Any temperature sensor supported by Home Assistant (for generic thermostat creation)
+- Any switch entity supported by Home Assistant (for generic thermostat heater control)
+
+### Optional Dependencies
+
+The integration can work with existing climate entities or create new generic thermostats:
+- **Existing Climate Entities**: Any Home Assistant climate entity (Tuya Local, Smart Thermostat PID, etc.)
+- **Generic Thermostat**: Built-in Home Assistant generic thermostat platform (no external dependencies)
 
 ## Installation
 
-### Step 1: Install Dependencies
+### Method 1: HACS (Recommended)
 
-1. **Install Smart Thermostat PID via HACS:**
+1. **Install via HACS:**
    ```
-   HACS → Integrations → ⋮ → Custom repositories
-   Repository: https://github.com/ScratMan/HASmartThermostat
-   Category: Integration
-   ```
-
-2. **Install Tuya Local via HACS:**
-   ```
-   HACS → Integrations → Search "Tuya Local"
+   HACS → Integrations → Explore & Download Repositories
+   Search: "Aqara W100 Smart Control"
    ```
 
-3. **Configure your Kogan fan in Tuya Local**
-4. **Pair your W100 device with Zigbee2MQTT/ZHA**
+2. **Restart Home Assistant**
 
-### Step 2: Configure Required Entities
-
-#### Smart Thermostat Configuration
-Add to your `configuration.yaml`:
-
-```yaml
-climate:
-  - platform: smart_thermostat
-    name: Smart Bedroom Fan Controller
-    unique_id: smart_bedroom_fan_pid
-    heater: input_boolean.bedroom_fan_heat_mode
-    target_sensor: sensor.bedroom_temp
-    outdoor_sensor: sensor.outdoor_temperature
-    min_temp: 17
-    max_temp: 28
-    target_temp: 22
-    keep_alive:
-      seconds: 60
-    away_temp: 20
-    eco_temp: 21
-    boost_temp: 24
-    kp: 100
-    ki: 0
-    kd: 0
-    pwm: 00:15:00
-    debug: true
-```
-
-#### Input Boolean for Heat Mode
-```yaml
-input_boolean:
-  bedroom_fan_heat_mode:
-    name: Bedroom Fan Heat Mode
-    icon: mdi:radiator
-```
-
-### Step 3: Import Blueprint
-
-1. **Download the blueprint:**
-   - Copy the raw content of [`blueprint.yaml`](blueprint.yaml)
-
-2. **Import in Home Assistant:**
+3. **Add Integration:**
    ```
-   Settings → Automations & Scenes → Blueprints → Import Blueprint
+   Settings → Devices & Services → Add Integration
+   Search: "Aqara W100 Smart Control"
    ```
-   - Paste the blueprint YAML content
 
-3. **Create automation from blueprint:**
+### Method 2: Manual Installation
+
+1. **Download Integration:**
+   - Download the latest release from [GitHub Releases](https://github.com/username/w100-smart-control/releases)
+   - Extract the `custom_components/w100_smart_control` folder
+
+2. **Copy to Home Assistant:**
    ```
-   Settings → Automations & Scenes → Create Automation → Use Blueprint
+   Copy to: config/custom_components/w100_smart_control/
    ```
+
+3. **Restart Home Assistant**
+
+4. **Add Integration:**
+   ```
+   Settings → Devices & Services → Add Integration
+   Search: "Aqara W100 Smart Control"
+   ```
+
+### Prerequisites
+
+Before installation, ensure you have:
+- ✅ W100 device paired with Zigbee2MQTT or ZHA
+- ✅ MQTT integration configured (if using Zigbee2MQTT)
+- ✅ Temperature sensors available in Home Assistant
+- ✅ Climate entities or switches for heater control (if using existing entities)
 
 ## Configuration
 
-### Required Inputs
+The integration provides a step-by-step GUI configuration process:
 
-| Input | Description | Example |
-|-------|-------------|---------|
-| **W100 Device Name** | Exact case-sensitive name from Zigbee2MQTT | `Tempcontrol00` |
-| **Heat Mode Boolean** | Input boolean controlling heating mode | `input_boolean.bedroom_fan_heat_mode` |
-| **Fan Climate Entity** | The fan's climate entity from Tuya Local | `climate.bedroom_fan` |
-| **Fan Warm Level Entity** | Select entity for heating levels | `select.bedroom_fan_warm_level` |
-| **Smart Thermostat Entity** | PID controller climate entity | `climate.smart_bedroom_fan_controller` |
-| **Humidity Sensor** | Primary humidity sensor | `sensor.bedroom_humidity_group` |
-| **Fan Beep Switch** | Switch controlling fan beep sounds | `switch.bedroom_fan_beep` |
+### Step 1: Device Discovery
+- Automatically scans for available W100 devices via Zigbee2MQTT
+- Select your W100 device from the discovered list
+- Validates device accessibility and MQTT topics
 
-### Optional Settings
+### Step 2: Climate Entity Selection
+Choose one of two options:
+
+#### Option A: Use Existing Climate Entity
+- Select from existing climate entities in your Home Assistant
+- Validates entity supports required features (temperature control, heat/off modes)
+
+#### Option B: Create New Generic Thermostat
+- **Heater Switch**: Switch entity that controls your heater
+- **Temperature Sensor**: Sensor entity for current temperature readings
+- **Min/Max Temperature**: Temperature range (default: 7-35°C)
+- **Target Temperature**: Initial temperature setpoint (default: 21°C)
+- **Tolerances**: Cold/hot tolerance for switching (default: 0.3°C)
+- **Precision**: Temperature step size (default: 0.5°C for W100 compatibility)
+
+### Step 3: Customization Options
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Backup Humidity Sensor** | - | Fallback humidity sensor |
 | **Heating Temperature** | 30°C | Temperature when actively heating |
 | **Idle Temperature** | 22°C | Temperature when maintaining |
-| **Heating Warm Level** | 4 | Heat level when actively heating |
-| **Idle Warm Level** | 1 | Heat level when maintaining |
-| **Idle Fan Speed** | 3 | Fan speed when thermostat is idle |
-| **Swing Mode** | horizontal | Fan oscillation mode |
-| **Beep Mode** | On-Mode Change | Beep control behavior |
+| **Heating Warm Level** | 4 | Heat level when actively heating (1-4) |
+| **Idle Warm Level** | 1 | Heat level when maintaining (1-4) |
+| **Idle Fan Speed** | 3 | Fan speed when thermostat is off (1-9) |
+| **Swing Mode** | horizontal | Fan oscillation (horizontal/vertical/both/off) |
+| **Beep Mode** | On-Mode Change | Audio feedback behavior |
+| **Humidity Sensor** | - | Primary humidity sensor for W100 display |
+| **Backup Humidity Sensor** | - | Fallback humidity sensor |
 
 ### Beep Control Modes
 
-- **Enable Beep**: Fan beeps for all operations
-- **Disable Beep**: Fan never beeps  
-- **On-Mode Change**: Smart beeping only for temperature changes and manual on/off
+- **Enable Beep**: Audio feedback for all operations
+- **Disable Beep**: No audio feedback
+- **On-Mode Change**: Smart beeping only for temperature changes and mode switching
 
 ## Usage
 
 ### Basic Operation
 
 1. **Heat Mode**: 
-   - Set smart thermostat to desired temperature
-   - Fan automatically heats to reach target
-   - PID controller maintains precise temperature
+   - Set climate entity to desired temperature via Home Assistant or W100 remote
+   - System automatically maintains target temperature
+   - W100 display shows current and target temperature
 
-2. **Fan Mode**:
-   - Use W100 remote or Home Assistant to control fan speed
-   - Manual fan speed control (1-9)
-   - Automatic idle speed when thermostat off
+2. **Off Mode**:
+   - Climate entity is off, but W100 remote still functional
+   - Use W100 remote to control fan speed directly (1-9)
+   - W100 display shows fan speed and humidity
 
 ### W100 Remote Controls
 
-- **Double-tap center**: Toggle between heat/fan mode
-- **Single/Double +**: Increase temperature (heat mode) or fan speed (cool mode)  
-- **Single/Double -**: Decrease temperature (heat mode) or fan speed (cool mode)
-- **Display**: Shows current temperature, target temperature, and humidity
+- **Double-tap center button**: Toggle between heat and off modes
+- **Plus buttons**: Increase temperature (heat mode) or fan speed (off mode) by 0.5°C/1 level
+- **Minus buttons**: Decrease temperature (heat mode) or fan speed (off mode) by 0.5°C/1 level
+- **Display**: Shows current temperature, target temperature, fan speed, and humidity
+
+### Entities Created
+
+The integration creates several entities for each configured W100 device:
+
+#### Climate Entity
+- **`climate.w100_[device_name]`**: Main climate control interface
+- Proxies operations to your selected climate entity
+- Handles W100 button presses and display updates
+
+#### Sensor Entities
+- **`sensor.w100_[device_name]_humidity`**: Current humidity from W100 display
+- **`sensor.w100_[device_name]_status`**: Current mode and last action
+- **`sensor.w100_[device_name]_connection`**: Connection status and diagnostics
+
+#### Switch Entities
+- **`switch.w100_[device_name]_beep`**: Control beep functionality
+- **`switch.w100_[device_name]_advanced_features`**: Enable/disable advanced features
 
 ### Advanced Features
 
-#### Temperature Sensor Workaround
-- Automatically detects when fan sensor reads 30°C but room is cooler
-- Temporarily switches to fan-only mode for 2 minutes
-- Forces air circulation for accurate temperature reading
+#### Stuck Heater Workaround
+- Automatically detects when temperature sensor gets stuck
+- Temporarily adjusts operation to force accurate readings
 - Prevents premature heating shutdown
 
-#### Smart Display Sync
+#### Smart Display Synchronization
 - Real-time temperature and humidity updates on W100
-- Always uses external sensor mode for custom value display
-- Shows temperature setpoint in heat mode, fan speed (1-9) in cool mode
-- Startup initialization and automatic sync on value changes
+- Automatic mode detection and appropriate value display
+- Startup initialization with current system values
+- Debounced updates to prevent display flickering
+
+#### Device Triggers
+- Automation triggers for W100 button presses
+- Available in Home Assistant's automation editor
+- Trigger types: `button_plus`, `button_minus`, `button_toggle`
 
 ## Troubleshooting
 
 ### Common Issues
 
-**W100 not responding:**
-- Verify exact device name case sensitivity
-- Check Zigbee2MQTT connection
-- Ensure MQTT broker is running
+**Integration not appearing in HACS:**
+- Ensure HACS is installed and updated
+- Check that the repository is added to HACS default repositories
+- Try refreshing HACS repository list
 
-**Fan speed not setting correctly:**
-- Check if `idle_fan_speed` setting matches your fan's capabilities
-- Verify fan climate entity supports fan modes 1-9
-- Review automation traces for errors
+**W100 device not discovered:**
+- Verify W100 is paired with Zigbee2MQTT or ZHA
+- Check device name matches exactly (case-sensitive)
+- Ensure MQTT integration is configured and connected
+- Verify Zigbee2MQTT is publishing device data
 
-**Temperature sensor workaround activating too often:**
-- Adjust fan placement for better air circulation
-- Check temperature sensor locations
-- Review automation logs for trigger frequency
+**Configuration flow errors:**
+- Check that all required entities exist and are accessible
+- Verify temperature sensors are providing numeric values
+- Ensure climate entities support heat and off modes
+- Check Home Assistant logs for detailed error messages
 
-**Beep control not working:**
-- Verify beep switch entity exists and controls fan beeps
-- Test switch manually in Developer Tools
-- Check automation traces for beep-related actions
+**W100 remote not responding:**
+- Verify MQTT topics are correct in Zigbee2MQTT
+- Check that W100 device is online and responsive
+- Test W100 manually in Zigbee2MQTT or ZHA
+- Review integration logs for MQTT communication errors
 
-### Debug Mode
+**Generic thermostat creation fails:**
+- Ensure heater switch entity exists and is controllable
+- Verify temperature sensor provides numeric values
+- Check that entity IDs don't conflict with existing entities
+- Review Home Assistant logs for creation errors
 
-Enable debug logging by setting the smart thermostat's `debug: true` and monitor these attributes:
-- `control_output`: PID output percentage
-- `proportional`: P term value  
-- `integral`: I term value
-- `derivative`: D term value
-- `error`: Temperature error
+### Debug Logging
 
-## Example Configurations
+Enable debug logging for detailed troubleshooting:
 
-### Bedroom Setup
 ```yaml
-# Quiet operation with minimal beeps
-beep_mode: "Disable Beep"
-idle_fan_speed: "2"
-heating_temperature: 22
-idle_temperature: 20
+logger:
+  default: info
+  logs:
+    custom_components.w100_smart_control: debug
 ```
 
-### Living Room Setup  
-```yaml
-# Responsive control with feedback
-beep_mode: "On-Mode Change"
-idle_fan_speed: "4"
-heating_temperature: 24
-swing_mode: "both"
-```
+Monitor these log entries:
+- W100 device discovery and validation
+- MQTT message handling and responses
+- Climate entity operations and state changes
+- Generic thermostat creation and management
+- Configuration flow steps and validation
 
-### Office Setup
-```yaml
-# Full feedback and control
-beep_mode: "Enable Beep"
-idle_fan_speed: "3"
-heating_temperature: 23
-idle_temperature: 21
-```
+### Getting Help
+
+1. **Check Logs**: Enable debug logging and review Home Assistant logs
+2. **Verify Setup**: Ensure all prerequisites are met and entities exist
+3. **Test Components**: Test W100 and climate entities independently
+4. **Report Issues**: Create detailed issue reports with logs and configuration
+
+## Migration from Blueprint
+
+### Automatic Migration
+
+The integration includes a migration wizard to help transition from the existing blueprint:
+
+1. **Detection**: Automatically detects existing blueprint automations
+2. **Import**: Imports compatible settings from blueprint configuration
+3. **Validation**: Validates that all entities still exist and are accessible
+4. **Guidance**: Provides step-by-step migration instructions
+
+### Manual Migration Steps
+
+1. **Install Integration**: Follow installation instructions above
+2. **Configure W100**: Use the same W100 device name from your blueprint
+3. **Map Entities**: Select the same climate entities used in your blueprint
+4. **Transfer Settings**: Use the same temperature, fan speed, and beep settings
+5. **Test Functionality**: Verify W100 remote works as expected
+6. **Disable Blueprint**: Disable or remove the old blueprint automation
+
+### Coexistence Mode
+
+The integration can coexist with blueprint automations during migration:
+- Both systems can operate simultaneously for testing
+- Integration takes precedence for W100 control when both are active
+- Gradual migration allows testing before full transition
+
+### Settings Mapping
+
+| Blueprint Setting | Integration Equivalent |
+|------------------|----------------------|
+| `w100_device_name` | Device selection in config flow |
+| `smart_thermostat_entity` | Climate entity selection |
+| `heating_temperature` | Heating Temperature setting |
+| `idle_temperature` | Idle Temperature setting |
+| `heating_warm_level` | Heating Warm Level setting |
+| `idle_warm_level` | Idle Warm Level setting |
+| `idle_fan_speed` | Idle Fan Speed setting |
+| `swing_mode` | Swing Mode setting |
+| `beep_mode` | Beep Mode setting |
+| `humidity_sensor` | Humidity Sensor setting |
+| `backup_humidity_sensor` | Backup Humidity Sensor setting |
 
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-- **v0.11.3**: ✅ **0.5°C PRECISION** - W100 buttons now adjust temperature by 0.5°C for finer control
-- **v0.11.2**: ✅ **MQTT REMOVED** - Eliminated timeout errors by using only HA services
-- **v0.11**: ✅ **ALL ISSUES FIXED** - Complete rewrite of OFF mode control & proper display bouncing fix
-- **v0.10**: ⚠️ **INCOMPLETE FIX** - Claims to fix W100 display bouncing but root cause remains (see ROUTING_ANALYSIS.md)
-- **v0.9**: Fixed Smart Thermostat PID compatibility - reverted to state checks instead of hvac_mode
-- **v0.8**: Fixed W100 showing fan speed when thermostat in heat mode but idle
-- **v0.7**: Fixed W100 display flip-flopping by using hvac_mode instead of state checks
-- **v0.6**: Fixed W100 display mode logic - always uses external mode for custom values
-- **v0.5**: Performance optimized with event-driven updates, removed debug logging
-- **v0.4**: Beep control feature with three configurable modes
-- **v0.3**: Temperature sensor workaround for stuck heater scenarios  
-- **v0.2**: Performance optimization with parallel mode
-- **v0.1**: Initial release with PID control and W100 integration
+### Integration Releases
+- **v1.0.0**: 🎯 **HACS Integration** - Complete transformation from blueprint to modern Home Assistant integration
+  - GUI configuration flow with device discovery
+  - Built-in generic thermostat creation
+  - Multi-device support with independent operation
+  - All blueprint functionality preserved and enhanced
+  - HACS compliance with proper validation workflows
+
+### Blueprint Legacy (Preserved for Reference)
+- **v0.11.3**: 0.5°C precision control for finer temperature adjustments
+- **v0.11.2**: Eliminated MQTT timeout errors by using Home Assistant services
+- **v0.11**: Complete rewrite fixing OFF mode control and display bouncing
+- **v0.10**: Attempted display bouncing fix (incomplete)
+- **v0.9**: Smart Thermostat PID compatibility improvements
+- **v0.8-v0.1**: Progressive feature additions and bug fixes
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+Contributions are welcome! Please read our contributing guidelines:
+
+### Development Setup
+1. Fork the repository
+2. Create a development branch
+3. Make your changes
+4. Test with a local Home Assistant instance
+5. Ensure all GitHub Actions pass
+6. Submit a pull request
+
+### Code Standards
+- Follow Home Assistant integration patterns
+- Include unit tests for new functionality
+- Update documentation for user-facing changes
+- Ensure HACS validation passes
+
+### Reporting Issues
+- Use the issue template
+- Include Home Assistant version and integration version
+- Provide relevant logs with debug logging enabled
+- Include configuration details (sanitized)
 
 ## License
 
@@ -282,18 +355,25 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Credits and Acknowledgments
 
-- **[Smart Thermostat PID](https://github.com/ScratMan/HASmartThermostat)** by ScratMan - Core PID temperature control
-- **[Tuya Local](https://github.com/make-all/tuya-local)** by make-all - Local control for Tuya devices
-- **Home Assistant Community** - For continuous support and inspiration
+- **Home Assistant Community** - For the excellent platform and integration patterns
+- **HACS Team** - For the community store infrastructure
+- **Zigbee2MQTT Project** - For reliable Zigbee device communication
+- **Blueprint Users** - For testing, feedback, and feature requests that shaped this integration
 
 ## Support
 
-If you find this project useful, consider:
-- ⭐ Starring this repository
-- 🐛 Reporting bugs or requesting features
-- 💡 Contributing improvements
-- 📖 Improving documentation
+### Community Support
+- 🐛 **Issues**: [GitHub Issues](https://github.com/username/w100-smart-control/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/username/w100-smart-control/discussions)
+- 📖 **Documentation**: This README and integration help text
+
+### Show Your Support
+If you find this integration useful:
+- ⭐ Star this repository
+- 🔄 Share with others who have W100 devices
+- 💡 Contribute improvements or suggestions
+- 📝 Help improve documentation
 
 ---
 
-**Note**: This blueprint is designed for the Kogan Smarterhome bladeless heater fan but may be adaptable to other similar fan/heater combinations with appropriate entity modifications. 
+**Compatibility**: This integration works with any climate entity in Home Assistant and can create generic thermostats for heater/switch combinations. While originally designed for fan/heater combos, it's adaptable to various heating systems. 

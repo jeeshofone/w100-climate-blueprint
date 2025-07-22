@@ -1,9 +1,49 @@
 # Changelog
 
-All notable changes to the W100 Climate Blueprint will be documented in this file.
+All notable changes to the Aqara W100 Smart Control Integration will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] - 2025-01-XX
+
+### 🎯 MAJOR RELEASE - HACS Integration
+- **NEW**: Complete transformation from blueprint to modern Home Assistant integration
+- **NEW**: GUI configuration flow with step-by-step setup wizard
+- **NEW**: Automatic W100 device discovery via Zigbee2MQTT
+- **NEW**: Built-in generic thermostat creation with optimal W100 settings
+- **NEW**: Multi-device support with independent operation
+- **NEW**: Device and entity registry integration
+- **NEW**: Proper Home Assistant integration patterns and best practices
+- **NEW**: HACS compliance with validation workflows
+- **NEW**: Migration wizard for existing blueprint users
+- **NEW**: Device triggers for automation integration
+- **NEW**: Comprehensive error handling and user guidance
+
+### Enhanced Features
+- **IMPROVED**: All blueprint functionality preserved and enhanced
+- **IMPROVED**: Better error handling and user feedback
+- **IMPROVED**: Structured logging and diagnostics
+- **IMPROVED**: Entity organization and device grouping
+- **IMPROVED**: Configuration validation and entity checking
+
+### Breaking Changes
+- **CHANGED**: Installation method now through HACS or manual integration installation
+- **CHANGED**: Configuration now through GUI instead of YAML blueprint
+- **CHANGED**: Entity naming follows Home Assistant integration patterns
+- **MIGRATION**: Blueprint users need to migrate to integration (wizard provided)
+
+### Technical Improvements
+- Modern Home Assistant integration architecture
+- Config flow with multi-step validation
+- Data update coordinator for state management
+- Proper entity and device registry usage
+- Comprehensive unit and integration tests
+- GitHub Actions for HACS and Hassfest validation
+
+## Blueprint Legacy Versions
+
+The following versions represent the blueprint evolution that led to this integration:
 
 ## [0.11.3] - 2025-01-XX
 
