@@ -1,13 +1,13 @@
 {
   "domain": "w100_smart_control",
   "name": "Aqara W100 Smart Control",
-  "codeowners": ["@your-username"],
+  "codeowners": ["@w100-climate-blueprint"],
   "config_flow": true,
   "dependencies": ["mqtt"],
-  "documentation": "https://github.com/your-username/w100-smart-control",
+  "documentation": "https://github.com/w100-climate-blueprint/w100-smart-control",
   "integration_type": "device",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/your-username/w100-smart-control/issues",
+  "issue_tracker": "https://github.com/w100-climate-blueprint/w100-smart-control/issues",
   "requirements": [],
   "version": "1.0.0"
 }
