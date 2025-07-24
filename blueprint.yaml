@@ -1,8 +1,20 @@
 blueprint:
-  name: Office Fan W100 Smart Control
-  description: v0.11.3 - Complete PID-controlled fan with W100 remote integration (FIXED - 0.5°C precision temperature control)
+  name: Multi-Device W100 Smart Control
+  description: v0.12.0 - Complete PID-controlled fan/heater with W100 remote integration - Supports Kogan Bladeless Fan and Philips Fan Heater (0.5°C precision temperature control)
   domain: automation
   input:
+    device_type:
+      name: Device Type
+      description: Select the type of fan/heater device you're using
+      selector:
+        select:
+          options:
+            - label: "Kogan Smarterhome Bladeless Fan"
+              value: "kogan_bladeless"
+            - label: "Philips Fan Heater"
+              value: "philips_heater"
+      default: "kogan_bladeless"
+    
     w100_device_name:
       name: W100 Device Name
       description: EXACT case-sensitive name of your W100 device as it appears in Zigbee2MQTT (e.g., "Tempcontrol00" with capital T, not "tempcontrol00")
@@ -18,18 +30,37 @@ blueprint:
           domain: input_boolean
     
     fan_climate_entity:
-      name: Fan Climate Entity
+      name: Fan/Heater Climate Entity
       description: The actual fan/heater climate entity
       selector:
         entity:
           domain: climate
     
+    # Kogan Bladeless Fan specific entities
     fan_warm_level_entity:
-      name: Fan Warm Level Entity
-      description: The select entity that controls heating levels
+      name: Fan Warm Level Entity (Kogan Only)
+      description: The select entity that controls heating levels (only for Kogan Bladeless Fan)
       selector:
         entity:
           domain: select
+      default: ""
+    
+    # Philips Fan Heater specific entities  
+    fan_entity:
+      name: Fan Entity (Philips Only)
+      description: The fan entity for Philips heater (only for Philips Fan Heater)
+      selector:
+        entity:
+          domain: fan
+      default: ""
+    
+    temperature_number_entity:
+      name: Temperature Number Entity (Philips Only)
+      description: The number entity for temperature control (only for Philips Fan Heater)
+      selector:
+        entity:
+          domain: number
+      default: ""
     
     smart_thermostat_entity:
       name: Smart Thermostat Entity
@@ -56,8 +87,8 @@ blueprint:
       default: ""
     
     heating_temperature:
-      name: Heating Temperature
-      description: Temperature to set when actively heating
+      name: Heating Temperature (Kogan Only)
+      description: Temperature to set when actively heating (only for Kogan Bladeless Fan)
       selector:
         number:
           min: 15
@@ -66,8 +97,8 @@ blueprint:
       default: 30
     
     idle_temperature:
-      name: Idle Temperature
-      description: Temperature to set when maintaining (idle)
+      name: Idle Temperature (Kogan Only)
+      description: Temperature to set when maintaining idle (only for Kogan Bladeless Fan)
       selector:
         number:
           min: 15
@@ -76,8 +107,8 @@ blueprint:
       default: 22
     
     heating_warm_level:
-      name: Heating Warm Level
-      description: Warm level when actively heating
+      name: Heating Warm Level (Kogan Only)
+      description: Warm level when actively heating (only for Kogan Bladeless Fan)
       selector:
         select:
           options:
@@ -88,8 +119,8 @@ blueprint:
       default: "4"
     
     idle_warm_level:
-      name: Idle Warm Level
-      description: Warm level when maintaining temperature
+      name: Idle Warm Level (Kogan Only)
+      description: Warm level when maintaining temperature (only for Kogan Bladeless Fan)
       selector:
         select:
           options:
@@ -100,8 +131,8 @@ blueprint:
       default: "1\""
     
     idle_fan_speed:
-      name: Idle Fan Speed
-      description: Fan speed (1-9) when smart thermostat is idle or off
+      name: Idle Fan Speed (Kogan Only)
+      description: Fan speed (1-9) when smart thermostat is idle or off (only for Kogan Bladeless Fan)
       selector:
         select:
           options:
@@ -116,9 +147,36 @@ blueprint:
             - "9"
       default: "3"
     
+    # Philips Fan Heater specific options
+    philips_heating_preset:
+      name: Heating Preset Mode (Philips Only)
+      description: Preset mode to use for heating (only for Philips Fan Heater)
+      selector:
+        select:
+          options:
+            - "auto_plus"
+            - "ventilation"
+            - "low"
+            - "medium"
+            - "high"
+      default: "high"
+    
+    philips_idle_preset:
+      name: Idle Preset Mode (Philips Only)
+      description: Preset mode to use when idle/off (only for Philips Fan Heater)
+      selector:
+        select:
+          options:
+            - "auto_plus"
+            - "ventilation"
+            - "low"
+            - "medium"
+            - "high"
+      default: "low"
+    
     swing_mode:
       name: Swing Mode
-      description: Oscillation mode for the fan
+      description: Oscillation mode for the fan/heater
       selector:
         select:
           options:
@@ -126,14 +184,16 @@ blueprint:
             - "vertical"
             - "both"
             - "off"
+            - "on"
       default: "horizontal"
     
     fan_beep_switch:
-      name: Fan Beep Switch
-      description: Switch entity that controls the fan's beep sound
+      name: Fan Beep Switch (Kogan Only)
+      description: Switch entity that controls the fan's beep sound (only for Kogan Bladeless Fan)
       selector:
         entity:
           domain: switch
+      default: ""
     
     beep_mode:
       name: Beep Mode
@@ -150,14 +210,19 @@ trigger_variables:
   w100_name: !input w100_device_name
 
 variables:
+  device_type: !input device_type
   fan_entity: !input fan_climate_entity
   warm_level_entity: !input fan_warm_level_entity
+  philips_fan_entity: !input fan_entity
+  philips_temp_entity: !input temperature_number_entity
   smart_entity: !input smart_thermostat_entity
   humidity_entity: !input humidity_sensor
   backup_humidity_entity: !input backup_humidity_sensor
   idle_fan_speed: !input idle_fan_speed
   idle_warm_level: !input idle_warm_level
   heating_temp: !input heating_temperature
+  philips_heating_preset: !input philips_heating_preset
+  philips_idle_preset: !input philips_idle_preset
   beep_switch: !input fan_beep_switch
   beep_mode: !input beep_mode
 
@@ -229,6 +294,11 @@ trigger:
     entity_id: !input fan_climate_entity
     attribute: fan_mode
     id: w100_sync
+  # Philips fan preset mode trigger (when fan entity is configured)
+  - platform: state
+    entity_id: !input fan_entity
+    attribute: preset_mode
+    id: w100_sync
   # W100 startup trigger
   - platform: homeassistant
     event: start
@@ -251,7 +321,7 @@ condition: []
 
 action:
   - choose:
-      # Office Fan Heat Mode On
+      # Fan/Heater Heat Mode On
       - conditions:
           - condition: trigger
             id: office_fan_heat_mode
@@ -259,38 +329,69 @@ action:
             entity_id: !input heat_mode_boolean
             state: "on"
         sequence:
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              hvac_mode: heat
-          - service: climate.set_temperature
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              temperature: !input heating_temperature
-          - service: select.select_option
-            target:
-              entity_id: !input fan_warm_level_entity
-            data:
-              option: !input heating_warm_level
-          - service: climate.set_swing_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              swing_mode: !input swing_mode
-          # Manage beep switch based on mode
+          - choose:
+              # Kogan Bladeless Fan
+              - conditions:
+                  - condition: template
+                    value_template: "{{ device_type == 'kogan_bladeless' }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      hvac_mode: heat
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      temperature: !input heating_temperature
+                  - service: select.select_option
+                    target:
+                      entity_id: !input fan_warm_level_entity
+                    data:
+                      option: !input heating_warm_level
+                  - service: climate.set_swing_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      swing_mode: !input swing_mode
+              # Philips Fan Heater
+              - conditions:
+                  - condition: template
+                    value_template: "{{ device_type == 'philips_heater' }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      hvac_mode: heat
+                  - service: climate.set_preset_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      preset_mode: !input philips_heating_preset
+                  - service: number.set_value
+                    target:
+                      entity_id: !input temperature_number_entity
+                    data:
+                      value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
+                  - service: climate.set_swing_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      swing_mode: !input swing_mode
+          # Manage beep switch based on mode (Kogan only)
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ beep_mode == 'Enable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Enable Beep' }}"
                 sequence:
                   - service: switch.turn_on
                     target:
                       entity_id: !input fan_beep_switch
               - conditions:
                   - condition: template
-                    value_template: "{{ beep_mode == 'Disable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
@@ -309,7 +410,7 @@ action:
             data:
               value: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(1) }}"
       
-      # Office Fan Heat Mode Off
+      # Fan/Heater Heat Mode Off
       - conditions:
           - condition: trigger
             id: office_fan_heat_mode
@@ -317,43 +418,69 @@ action:
             entity_id: !input heat_mode_boolean
             state: "off"
         sequence:
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              hvac_mode: fan_only
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              fan_mode: !input idle_fan_speed
-          - service: climate.set_temperature
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              temperature: !input idle_temperature
-          - service: select.select_option
-            target:
-              entity_id: !input fan_warm_level_entity
-            data:
-              option: !input idle_warm_level
-          - service: climate.set_swing_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              swing_mode: !input swing_mode
-          # Manage beep switch based on mode
+          - choose:
+              # Kogan Bladeless Fan
+              - conditions:
+                  - condition: template
+                    value_template: "{{ device_type == 'kogan_bladeless' }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      hvac_mode: fan_only
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      fan_mode: !input idle_fan_speed
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      temperature: !input idle_temperature
+                  - service: select.select_option
+                    target:
+                      entity_id: !input fan_warm_level_entity
+                    data:
+                      option: !input idle_warm_level
+                  - service: climate.set_swing_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      swing_mode: !input swing_mode
+              # Philips Fan Heater
+              - conditions:
+                  - condition: template
+                    value_template: "{{ device_type == 'philips_heater' }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      hvac_mode: fan_only
+                  - service: climate.set_preset_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      preset_mode: !input philips_idle_preset
+                  - service: climate.set_swing_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      swing_mode: !input swing_mode
+          # Manage beep switch based on mode (Kogan only)
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ beep_mode == 'Enable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Enable Beep' }}"
                 sequence:
                   - service: switch.turn_on
                     target:
                       entity_id: !input fan_beep_switch
               - conditions:
                   - condition: template
-                    value_template: "{{ beep_mode == 'Disable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
@@ -372,43 +499,71 @@ action:
             entity_id: !input smart_thermostat_entity
             state: "off"
         sequence:
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              hvac_mode: fan_only
-          - delay:
-              milliseconds: 1000
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              fan_mode: !input idle_fan_speed
-          - delay:
-              milliseconds: 500
-          - service: select.select_option
-            target:
-              entity_id: !input fan_warm_level_entity
-            data:
-              option: !input idle_warm_level
-          - service: climate.set_temperature
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              temperature: !input idle_temperature
-          - service: climate.set_swing_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              swing_mode: !input swing_mode
-          # Force another fan mode set after all other settings
-          - delay:
-              milliseconds: 500
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input fan_climate_entity
-            data:
-              fan_mode: !input idle_fan_speed
+          - choose:
+              # Kogan Bladeless Fan
+              - conditions:
+                  - condition: template
+                    value_template: "{{ device_type == 'kogan_bladeless' }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      hvac_mode: fan_only
+                  - delay:
+                      milliseconds: 1000
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      fan_mode: !input idle_fan_speed
+                  - delay:
+                      milliseconds: 500
+                  - service: select.select_option
+                    target:
+                      entity_id: !input fan_warm_level_entity
+                    data:
+                      option: !input idle_warm_level
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      temperature: !input idle_temperature
+                  - service: climate.set_swing_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      swing_mode: !input swing_mode
+                  # Force another fan mode set after all other settings
+                  - delay:
+                      milliseconds: 500
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      fan_mode: !input idle_fan_speed
+              # Philips Fan Heater
+              - conditions:
+                  - condition: template
+                    value_template: "{{ device_type == 'philips_heater' }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      hvac_mode: fan_only
+                  - delay:
+                      milliseconds: 1000
+                  - service: climate.set_preset_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      preset_mode: !input philips_idle_preset
+                  - service: climate.set_swing_mode
+                    target:
+                      entity_id: !input fan_climate_entity
+                    data:
+                      swing_mode: !input swing_mode
 
       # W100 Toggle Heat/Fan Mode
       - conditions:
@@ -520,25 +675,59 @@ action:
                     data:
                       value: "{{ new_fan }}"
             default:
-              # Handle OFF mode - control fan directly
-              - variables:
-                  current_fan: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
-                  new_fan: "{{ [current_fan + 1, 9] | min }}"
-              - service: climate.set_fan_mode
-                target:
-                  entity_id: !input fan_climate_entity
-                data:
-                  fan_mode: "{{ new_fan | string }}"
-              - service: select.select_option
-                target:
-                  entity_id: "select.{{ w100_name }}_sensor"
-                data:
-                  option: external
-              - service: number.set_value
-                target:
-                  entity_id: "number.{{ w100_name }}_external_temperature"
-                data:
-                  value: "{{ new_fan }}"
+              # Handle OFF mode - device-specific control
+              - choose:
+                  # Kogan Bladeless Fan - numeric fan speed
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ device_type == 'kogan_bladeless' }}"
+                    sequence:
+                      - variables:
+                          current_fan: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
+                          new_fan: "{{ [current_fan + 1, 9] | min }}"
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: !input fan_climate_entity
+                        data:
+                          fan_mode: "{{ new_fan | string }}"
+                      - service: select.select_option
+                        target:
+                          entity_id: "select.{{ w100_name }}_sensor"
+                        data:
+                          option: external
+                      - service: number.set_value
+                        target:
+                          entity_id: "number.{{ w100_name }}_external_temperature"
+                        data:
+                          value: "{{ new_fan }}"
+                  # Philips Fan Heater - preset cycling
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ device_type == 'philips_heater' }}"
+                    sequence:
+                      - variables:
+                          preset_order: ["low", "medium", "high", "auto_plus"]
+                          current_preset: "{{ state_attr(philips_fan_entity, 'preset_mode') | default('low') }}"
+                          current_index: "{{ preset_order.index(current_preset) if current_preset in preset_order else 0 }}"
+                          new_index: "{{ [current_index + 1, 3] | min }}"
+                          new_preset: "{{ preset_order[new_index] }}"
+                          preset_to_number: {"low": 2, "medium": 5, "high": 7, "auto_plus": 9}
+                          display_value: "{{ preset_to_number[new_preset] }}"
+                      - service: fan.set_preset_mode
+                        target:
+                          entity_id: !input fan_entity
+                        data:
+                          preset_mode: "{{ new_preset }}"
+                      - service: select.select_option
+                        target:
+                          entity_id: "select.{{ w100_name }}_sensor"
+                        data:
+                          option: external
+                      - service: number.set_value
+                        target:
+                          entity_id: "number.{{ w100_name }}_external_temperature"
+                        data:
+                          value: "{{ display_value }}"
 
       # W100 Decrease Temp/Fan Speed
       - conditions:
@@ -594,25 +783,59 @@ action:
                     data:
                       value: "{{ new_fan }}"
             default:
-              # Handle OFF mode - control fan directly
-              - variables:
-                  current_fan: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
-                  new_fan: "{{ [current_fan - 1, 1] | max }}"
-              - service: climate.set_fan_mode
-                target:
-                  entity_id: !input fan_climate_entity
-                data:
-                  fan_mode: "{{ new_fan | string }}"
-              - service: select.select_option
-                target:
-                  entity_id: "select.{{ w100_name }}_sensor"
-                data:
-                  option: external
-              - service: number.set_value
-                target:
-                  entity_id: "number.{{ w100_name }}_external_temperature"
-                data:
-                  value: "{{ new_fan }}"
+              # Handle OFF mode - device-specific control
+              - choose:
+                  # Kogan Bladeless Fan - numeric fan speed
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ device_type == 'kogan_bladeless' }}"
+                    sequence:
+                      - variables:
+                          current_fan: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
+                          new_fan: "{{ [current_fan - 1, 1] | max }}"
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: !input fan_climate_entity
+                        data:
+                          fan_mode: "{{ new_fan | string }}"
+                      - service: select.select_option
+                        target:
+                          entity_id: "select.{{ w100_name }}_sensor"
+                        data:
+                          option: external
+                      - service: number.set_value
+                        target:
+                          entity_id: "number.{{ w100_name }}_external_temperature"
+                        data:
+                          value: "{{ new_fan }}"
+                  # Philips Fan Heater - preset cycling
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ device_type == 'philips_heater' }}"
+                    sequence:
+                      - variables:
+                          preset_order: ["low", "medium", "high", "auto_plus"]
+                          current_preset: "{{ state_attr(philips_fan_entity, 'preset_mode') | default('low') }}"
+                          current_index: "{{ preset_order.index(current_preset) if current_preset in preset_order else 0 }}"
+                          new_index: "{{ [current_index - 1, 0] | max }}"
+                          new_preset: "{{ preset_order[new_index] }}"
+                          preset_to_number: {"low": 2, "medium": 5, "high": 7, "auto_plus": 9}
+                          display_value: "{{ preset_to_number[new_preset] }}"
+                      - service: fan.set_preset_mode
+                        target:
+                          entity_id: !input fan_entity
+                        data:
+                          preset_mode: "{{ new_preset }}"
+                      - service: select.select_option
+                        target:
+                          entity_id: "select.{{ w100_name }}_sensor"
+                        data:
+                          option: external
+                      - service: number.set_value
+                        target:
+                          entity_id: "number.{{ w100_name }}_external_temperature"
+                        data:
+                          value: "{{ display_value }}"
 
       # W100 Sync Display Values
       - conditions:
@@ -627,7 +850,17 @@ action:
               current_ext_temp: "{{ states('number.' ~ w100_name ~ '_external_temperature') | float(0) }}"
               smart_mode: "{{ states(smart_entity) }}"
               target_temp: "{{ state_attr(smart_entity, 'temperature') | default(22) | round(1) }}"
-              fan_speed: "{{ state_attr(fan_entity, 'fan_mode') | int(1) }}"
+              # Device-specific fan speed calculation
+              fan_speed: >
+                {% if device_type == 'kogan_bladeless' %}
+                  {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
+                {% elif device_type == 'philips_heater' %}
+                  {% set preset = state_attr(philips_fan_entity, 'preset_mode') | default('low') %}
+                  {% set preset_to_number = {"low": 2, "medium": 5, "high": 7, "auto_plus": 9, "ventilation": 1} %}
+                  {{ preset_to_number[preset] if preset in preset_to_number else 2 }}
+                {% else %}
+                  1
+                {% endif %}
           - choose:
               - conditions:
                   - condition: state
@@ -725,7 +958,15 @@ action:
                   entity_id: "number.{{ w100_name }}_external_temperature"
                 data:
                   value: >
-                    {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
+                    {% if device_type == 'kogan_bladeless' %}
+                      {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
+                    {% elif device_type == 'philips_heater' %}
+                      {% set preset = state_attr(philips_fan_entity, 'preset_mode') | default('low') %}
+                      {% set preset_to_number = {"low": 2, "medium": 5, "high": 7, "auto_plus": 9, "ventilation": 1} %}
+                      {{ preset_to_number[preset] if preset in preset_to_number else 2 }}
+                    {% else %}
+                      1
+                    {% endif %}
           - service: number.set_value
             target:
               entity_id: "number.{{ w100_name }}_external_humidity"
@@ -736,27 +977,30 @@ action:
                 {% else %}
                   50
                 {% endif %}
-          # Set beep mode on startup
+          # Set beep mode on startup (Kogan only)
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ beep_mode == 'Enable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Enable Beep' }}"
                 sequence:
                   - service: switch.turn_on
                     target:
                       entity_id: !input fan_beep_switch
               - conditions:
                   - condition: template
-                    value_template: "{{ beep_mode == 'Disable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
                       entity_id: !input fan_beep_switch
-            default:
-              # On-Mode Change - ensure beep is off initially
-              - service: switch.turn_off
-                target:
-                  entity_id: !input fan_beep_switch
+              - conditions:
+                  - condition: template
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'On-Mode Change' }}"
+                sequence:
+                  # On-Mode Change - ensure beep is off initially
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input fan_beep_switch
 
       # W100 Sync Humidity Display
       - conditions:
@@ -813,12 +1057,12 @@ action:
             data:
               hvac_mode: heat
       
-      # Smart Thermostat Temperature Change - Beep
+      # Smart Thermostat Temperature Change - Beep (Kogan Only)
       - conditions:
           - condition: trigger
             id: smart_temp_change
           - condition: template
-            value_template: "{{ beep_mode == 'On-Mode Change' }}"
+            value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'On-Mode Change' }}"
         sequence:
           - service: switch.turn_off
             target:
@@ -834,12 +1078,12 @@ action:
             target:
               entity_id: !input fan_beep_switch
       
-      # Smart Thermostat Mode Change - Beep
+      # Smart Thermostat Mode Change - Beep (Kogan Only)
       - conditions:
           - condition: trigger
             id: smart_mode_change
           - condition: template
-            value_template: "{{ beep_mode == 'On-Mode Change' }}"
+            value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'On-Mode Change' }}"
           # Don't beep if this was triggered by the workaround
           - condition: template
             value_template: >
