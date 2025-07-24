@@ -60,8 +60,7 @@ blueprint:
         Leave empty if using Kogan Bladeless Fan.
         Example: fan.office_heater
       selector:
-        entity:
-          domain: fan
+        text:
       default: ""
     
     temperature_number_entity:
@@ -72,8 +71,7 @@ blueprint:
         Leave empty if using Kogan Bladeless Fan.
         Example: number.office_heater_temperature
       selector:
-        entity:
-          domain: number
+        text:
       default: ""
     
     smart_thermostat_entity:
@@ -387,16 +385,15 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       preset_mode: !input philips_heating_preset
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ philips_temp_entity != '' }}"
-                        sequence:
-                          - service: number.set_value
-                            target:
-                              entity_id: "{{ philips_temp_entity }}"
-                            data:
-                              value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
+                  - if:
+                      - condition: template
+                        value_template: "{{ philips_temp_entity != '' }}"
+                    then:
+                      - service: number.set_value
+                        target:
+                          entity_id: "{{ philips_temp_entity }}"
+                        data:
+                          value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
