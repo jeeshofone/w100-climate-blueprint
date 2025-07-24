@@ -1427,6 +1427,22 @@ class W100Coordinator(DataUpdateCoordinator):
             
             self._last_action_time[debounce_key] = now
             
+            # Fire device trigger event for automations
+            self.hass.bus.async_fire(
+                f"{DOMAIN}_button_action",
+                {
+                    "device_name": device_name,
+                    "action": action,
+                    "timestamp": now.isoformat(),
+                    "integration": DOMAIN,
+                }
+            )
+            
+            _LOGGER.debug(
+                "Fired device trigger event: %s_button_action for device %s, action %s",
+                DOMAIN, device_name, action
+            )
+            
             # Update device state
             if device_name not in self._device_states:
                 await self._async_initialize_device_states()
