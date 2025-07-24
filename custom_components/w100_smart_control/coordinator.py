@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,6 +16,7 @@ from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.components import mqtt
 
 # Generic thermostat domain constant
 GENERIC_THERMOSTAT_DOMAIN = "generic_thermostat"
@@ -31,12 +33,22 @@ from .const import (
     CONF_COLD_TOLERANCE,
     CONF_HOT_TOLERANCE,
     CONF_PRECISION,
+    CONF_W100_DEVICE_NAME,
+    CONF_HUMIDITY_SENSOR,
+    CONF_BACKUP_HUMIDITY_SENSOR,
     DEFAULT_MIN_TEMP,
     DEFAULT_MAX_TEMP,
     DEFAULT_TARGET_TEMP,
     DEFAULT_COLD_TOLERANCE,
     DEFAULT_HOT_TOLERANCE,
     DEFAULT_PRECISION,
+    MQTT_W100_ACTION_TOPIC,
+    MQTT_W100_STATE_TOPIC,
+    MQTT_W100_SET_TOPIC,
+    W100_ACTION_TOGGLE,
+    W100_ACTION_PLUS,
+    W100_ACTION_MINUS,
+    DISPLAY_UPDATE_DELAY_SECONDS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +64,11 @@ class W100Coordinator(DataUpdateCoordinator):
         self._created_thermostats: list[str] = []
         self._thermostat_configs: dict[str, dict[str, Any]] = {}
         self._storage = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_thermostats")
+        
+        # W100 device state tracking
+        self._device_states: dict[str, dict[str, Any]] = {}
+        self._mqtt_subscriptions: list[callable] = []
+        self._last_action_time: dict[str, datetime] = {}
         
         super().__init__(
             hass,
@@ -70,6 +87,12 @@ class W100Coordinator(DataUpdateCoordinator):
         
         # Set up entity state change listeners for created thermostats
         await self._async_setup_thermostat_listeners()
+        
+        # Set up MQTT listeners for W100 devices
+        await self._async_setup_mqtt_listeners()
+        
+        # Initialize device states
+        await self._async_initialize_device_states()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from W100 device."""
@@ -84,12 +107,23 @@ class W100Coordinator(DataUpdateCoordinator):
                 # Run validation in background to avoid blocking the update
                 self.hass.async_create_task(self.async_cleanup_invalid_thermostats())
             
-            # Basic data structure - will be expanded in later tasks
+            # Update device states from MQTT
+            await self._async_update_device_states()
+            
+            # Sync W100 displays with current climate states
+            await self._async_sync_all_displays()
+            
+            # Return current state data
+            device_name = self.config.get(CONF_W100_DEVICE_NAME, "unknown")
+            device_state = self._device_states.get(device_name, {})
+            
             return {
-                "device_name": self.config.get("w100_device_name"),
-                "status": "connected",
-                "last_update": self.hass.helpers.utcnow(),
+                "device_name": device_name,
+                "device_state": device_state,
+                "status": "connected" if device_state else "disconnected",
+                "last_update": datetime.now(),
                 "created_thermostats": len(self._created_thermostats),
+                "device_states": self._device_states.copy(),
             }
         except Exception as err:
             raise UpdateFailed(f"Error communicating with W100 device: {err}") from err
@@ -110,6 +144,79 @@ class W100Coordinator(DataUpdateCoordinator):
             _LOGGER.warning("Failed to load thermostat data: %s", err)
             self._created_thermostats = []
             self._thermostat_configs = {}
+
+    async def _async_setup_thermostat_listeners(self) -> None:
+        """Set up state change listeners for created thermostats."""
+        try:
+            for entity_id in self._created_thermostats:
+                self.hass.helpers.event.async_track_state_change_event(
+                    entity_id,
+                    self._async_thermostat_state_changed
+                )
+            
+            _LOGGER.debug("Set up state listeners for %d thermostats", len(self._created_thermostats))
+            
+        except Exception as err:
+            _LOGGER.error("Failed to set up thermostat listeners: %s", err)
+
+    @callback
+    def _async_thermostat_state_changed(self, event) -> None:
+        """Handle thermostat state changes."""
+        try:
+            entity_id = event.data.get("entity_id")
+            new_state = event.data.get("new_state")
+            old_state = event.data.get("old_state")
+            
+            if not entity_id or not new_state:
+                return
+            
+            _LOGGER.debug(
+                "Thermostat %s state changed from %s to %s",
+                entity_id,
+                old_state.state if old_state else "unknown",
+                new_state.state
+            )
+            
+            # Trigger display sync when thermostat state changes
+            device_name = self.config.get(CONF_W100_DEVICE_NAME)
+            if device_name:
+                self.hass.async_create_task(
+                    self._async_sync_w100_display(device_name)
+                )
+            
+        except Exception as err:
+            _LOGGER.error("Error handling thermostat state change: %s", err)
+
+    async def async_cleanup_invalid_thermostats(self) -> None:
+        """Clean up invalid or orphaned thermostats."""
+        try:
+            entity_registry = er.async_get(self.hass)
+            invalid_thermostats = []
+            
+            for entity_id in self._created_thermostats:
+                entity_entry = entity_registry.async_get(entity_id)
+                if not entity_entry:
+                    invalid_thermostats.append(entity_id)
+                    continue
+                
+                # Check if the entity still exists in the state machine
+                state = self.hass.states.get(entity_id)
+                if not state:
+                    invalid_thermostats.append(entity_id)
+            
+            # Remove invalid thermostats
+            for entity_id in invalid_thermostats:
+                try:
+                    await self.async_remove_generic_thermostat(entity_id)
+                    _LOGGER.info("Cleaned up invalid thermostat: %s", entity_id)
+                except Exception as err:
+                    _LOGGER.error("Failed to clean up invalid thermostat %s: %s", entity_id, err)
+            
+            if invalid_thermostats:
+                _LOGGER.info("Cleaned up %d invalid thermostats", len(invalid_thermostats))
+            
+        except Exception as err:
+            _LOGGER.error("Failed to cleanup invalid thermostats: %s", err)
 
     async def _async_save_thermostat_data(self) -> None:
         """Save thermostat data to storage."""
@@ -578,41 +685,383 @@ class W100Coordinator(DataUpdateCoordinator):
                 if friendly_name and friendly_name != entity_entry.original_name:
                     entity_registry.async_update_entity(
                         entity_id,
-                        original_name=friendly_name,
-                        name=friendly_name
+                        original_name=friendly_name
                     )
-                
-                # For generic thermostat, we need to trigger a reload of the entity
-                # This is typically handled by the platform, but we can signal the need for update
-                _LOGGER.debug("Updated thermostat entity registry for %s", entity_id)
+                    _LOGGER.debug("Updated thermostat %s name to %s", entity_id, friendly_name)
             
         except Exception as err:
             _LOGGER.error("Failed to update thermostat entity %s: %s", entity_id, err)
             raise
 
-    async def async_remove_all_thermostats(self) -> None:
-        """Remove all thermostats created by this integration entry."""
+    async def _async_setup_mqtt_listeners(self) -> None:
+        """Set up MQTT listeners for W100 device actions."""
         try:
-            thermostats_to_remove = self._created_thermostats.copy()
+            device_name = self.config.get(CONF_W100_DEVICE_NAME)
+            if not device_name:
+                _LOGGER.warning("No W100 device name configured, skipping MQTT setup")
+                return
             
-            for entity_id in thermostats_to_remove:
+            # Set up action listener
+            action_topic = MQTT_W100_ACTION_TOPIC.format(device_name)
+            
+            @callback
+            def handle_w100_action(msg):
+                """Handle W100 action messages."""
+                try:
+                    action = msg.payload
+                    _LOGGER.debug("Received W100 action: %s from device %s", action, device_name)
+                    
+                    # Schedule action handling
+                    self.hass.async_create_task(
+                        self.async_handle_w100_action(action, device_name)
+                    )
+                except Exception as err:
+                    _LOGGER.error("Error handling W100 action: %s", err)
+            
+            # Subscribe to action topic
+            await mqtt.async_subscribe(self.hass, action_topic, handle_w100_action, 0)
+            self._mqtt_subscriptions.append(action_topic)
+            
+            # Set up state listener
+            state_topic = MQTT_W100_STATE_TOPIC.format(device_name)
+            
+            @callback
+            def handle_w100_state(msg):
+                """Handle W100 state messages."""
+                try:
+                    payload = json.loads(msg.payload)
+                    _LOGGER.debug("Received W100 state: %s from device %s", payload, device_name)
+                    
+                    # Update device state
+                    self._device_states[device_name] = {
+                        **self._device_states.get(device_name, {}),
+                        **payload,
+                        "last_seen": datetime.now(),
+                    }
+                    
+                    # Trigger coordinator update
+                    self.async_set_updated_data(self.data)
+                    
+                except json.JSONDecodeError as err:
+                    _LOGGER.warning("Invalid JSON in W100 state message: %s", err)
+                except Exception as err:
+                    _LOGGER.error("Error handling W100 state: %s", err)
+            
+            # Subscribe to state topic
+            await mqtt.async_subscribe(self.hass, state_topic, handle_w100_state, 0)
+            self._mqtt_subscriptions.append(state_topic)
+            
+            _LOGGER.info("Set up MQTT listeners for W100 device: %s", device_name)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to set up MQTT listeners: %s", err)
+
+    async def _async_initialize_device_states(self) -> None:
+        """Initialize device states for tracking."""
+        try:
+            device_name = self.config.get(CONF_W100_DEVICE_NAME)
+            if device_name:
+                # Initialize device state if not exists
+                if device_name not in self._device_states:
+                    self._device_states[device_name] = {
+                        "device_name": device_name,
+                        "current_mode": "off",
+                        "target_temperature": DEFAULT_TARGET_TEMP,
+                        "current_temperature": None,
+                        "fan_speed": int(self.config.get(CONF_IDLE_FAN_SPEED, DEFAULT_IDLE_FAN_SPEED)),
+                        "humidity": None,
+                        "last_action": None,
+                        "last_action_time": None,
+                        "display_mode": "temperature",
+                        "beep_enabled": self.config.get(CONF_BEEP_MODE, DEFAULT_BEEP_MODE) != "Disable Beep",
+                        "last_seen": None,
+                    }
+                
+                _LOGGER.debug("Initialized device state for %s", device_name)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to initialize device states: %s", err)
+
+    async def _async_update_device_states(self) -> None:
+        """Update device states from current climate entity states."""
+        try:
+            device_name = self.config.get(CONF_W100_DEVICE_NAME)
+            if not device_name or device_name not in self._device_states:
+                return
+            
+            # Get climate entity (existing or created)
+            climate_entity_id = self.config.get(CONF_EXISTING_CLIMATE_ENTITY)
+            if not climate_entity_id and self._created_thermostats:
+                climate_entity_id = self._created_thermostats[0]  # Use first created thermostat
+            
+            if climate_entity_id:
+                climate_state = self.hass.states.get(climate_entity_id)
+                if climate_state and climate_state.state != STATE_UNAVAILABLE:
+                    # Update device state from climate entity
+                    device_state = self._device_states[device_name]
+                    device_state.update({
+                        "current_mode": climate_state.state,
+                        "target_temperature": climate_state.attributes.get("temperature"),
+                        "current_temperature": climate_state.attributes.get("current_temperature"),
+                        "last_update": datetime.now(),
+                    })
+            
+            # Update humidity from sensor if configured
+            humidity_sensor = self.config.get(CONF_HUMIDITY_SENSOR)
+            if humidity_sensor:
+                humidity_state = self.hass.states.get(humidity_sensor)
+                if humidity_state and humidity_state.state not in [STATE_UNAVAILABLE, "unknown"]:
+                    try:
+                        humidity_value = float(humidity_state.state)
+                        self._device_states[device_name]["humidity"] = humidity_value
+                    except (ValueError, TypeError):
+                        pass
+            
+        except Exception as err:
+            _LOGGER.error("Failed to update device states: %s", err)
+
+    async def async_handle_w100_action(self, action: str, device_name: str) -> None:
+        """Handle W100 button actions."""
+        try:
+            # Debounce rapid actions
+            now = datetime.now()
+            last_action_time = self._last_action_time.get(device_name)
+            if last_action_time and (now - last_action_time).total_seconds() < 0.5:
+                _LOGGER.debug("Debouncing rapid W100 action from %s", device_name)
+                return
+            
+            self._last_action_time[device_name] = now
+            
+            # Update device state
+            if device_name in self._device_states:
+                self._device_states[device_name].update({
+                    "last_action": action,
+                    "last_action_time": now,
+                })
+            
+            # Get climate entity to control
+            climate_entity_id = self.config.get(CONF_EXISTING_CLIMATE_ENTITY)
+            if not climate_entity_id and self._created_thermostats:
+                climate_entity_id = self._created_thermostats[0]
+            
+            if not climate_entity_id:
+                _LOGGER.warning("No climate entity configured for W100 device %s", device_name)
+                return
+            
+            climate_state = self.hass.states.get(climate_entity_id)
+            if not climate_state:
+                _LOGGER.warning("Climate entity %s not found", climate_entity_id)
+                return
+            
+            # Handle different actions
+            if action == W100_ACTION_TOGGLE:
+                await self._async_handle_toggle_action(climate_entity_id, climate_state)
+            elif action == W100_ACTION_PLUS:
+                await self._async_handle_plus_action(climate_entity_id, climate_state, device_name)
+            elif action == W100_ACTION_MINUS:
+                await self._async_handle_minus_action(climate_entity_id, climate_state, device_name)
+            else:
+                _LOGGER.debug("Unknown W100 action: %s", action)
+            
+            # Schedule display sync after action
+            await asyncio.sleep(DISPLAY_UPDATE_DELAY_SECONDS)
+            await self._async_sync_w100_display(device_name)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle W100 action %s: %s", action, err)
+
+    async def _async_handle_toggle_action(self, climate_entity_id: str, climate_state) -> None:
+        """Handle W100 toggle action (double press)."""
+        try:
+            current_mode = climate_state.state
+            
+            if current_mode == "off":
+                # Turn on heat mode
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_hvac_mode",
+                    {"entity_id": climate_entity_id, "hvac_mode": "heat"},
+                    blocking=True,
+                )
+                _LOGGER.debug("Toggled climate %s to heat mode", climate_entity_id)
+            else:
+                # Turn off
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_hvac_mode",
+                    {"entity_id": climate_entity_id, "hvac_mode": "off"},
+                    blocking=True,
+                )
+                _LOGGER.debug("Toggled climate %s to off mode", climate_entity_id)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle toggle action: %s", err)
+
+    async def _async_handle_plus_action(self, climate_entity_id: str, climate_state, device_name: str) -> None:
+        """Handle W100 plus action."""
+        try:
+            current_mode = climate_state.state
+            
+            if current_mode == "heat":
+                # Increase temperature
+                current_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
+                max_temp = climate_state.attributes.get("max_temp", DEFAULT_MAX_TEMP)
+                new_temp = min(current_temp + 0.5, max_temp)
+                
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_temperature",
+                    {"entity_id": climate_entity_id, "temperature": new_temp},
+                    blocking=True,
+                )
+                _LOGGER.debug("Increased temperature to %s for %s", new_temp, climate_entity_id)
+                
+            elif current_mode == "fan":
+                # Increase fan speed (if supported)
+                current_fan_speed = climate_state.attributes.get("fan_mode", "1")
+                try:
+                    fan_speed_num = int(current_fan_speed)
+                    new_fan_speed = min(fan_speed_num + 1, 9)
+                    
+                    await self.hass.services.async_call(
+                        "climate",
+                        "set_fan_mode",
+                        {"entity_id": climate_entity_id, "fan_mode": str(new_fan_speed)},
+                        blocking=True,
+                    )
+                    _LOGGER.debug("Increased fan speed to %s for %s", new_fan_speed, climate_entity_id)
+                except (ValueError, TypeError):
+                    _LOGGER.debug("Fan speed adjustment not supported for %s", climate_entity_id)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle plus action: %s", err)
+
+    async def _async_handle_minus_action(self, climate_entity_id: str, climate_state, device_name: str) -> None:
+        """Handle W100 minus action."""
+        try:
+            current_mode = climate_state.state
+            
+            if current_mode == "heat":
+                # Decrease temperature
+                current_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
+                min_temp = climate_state.attributes.get("min_temp", DEFAULT_MIN_TEMP)
+                new_temp = max(current_temp - 0.5, min_temp)
+                
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_temperature",
+                    {"entity_id": climate_entity_id, "temperature": new_temp},
+                    blocking=True,
+                )
+                _LOGGER.debug("Decreased temperature to %s for %s", new_temp, climate_entity_id)
+                
+            elif current_mode == "fan":
+                # Decrease fan speed (if supported)
+                current_fan_speed = climate_state.attributes.get("fan_mode", "1")
+                try:
+                    fan_speed_num = int(current_fan_speed)
+                    new_fan_speed = max(fan_speed_num - 1, 1)
+                    
+                    await self.hass.services.async_call(
+                        "climate",
+                        "set_fan_mode",
+                        {"entity_id": climate_entity_id, "fan_mode": str(new_fan_speed)},
+                        blocking=True,
+                    )
+                    _LOGGER.debug("Decreased fan speed to %s for %s", new_fan_speed, climate_entity_id)
+                except (ValueError, TypeError):
+                    _LOGGER.debug("Fan speed adjustment not supported for %s", climate_entity_id)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle minus action: %s", err)
+
+    async def _async_sync_all_displays(self) -> None:
+        """Sync all W100 displays with current states."""
+        try:
+            for device_name in self._device_states:
+                await self._async_sync_w100_display(device_name)
+        except Exception as err:
+            _LOGGER.error("Failed to sync all displays: %s", err)
+
+    async def _async_sync_w100_display(self, device_name: str) -> None:
+        """Sync W100 display with current climate state."""
+        try:
+            if device_name not in self._device_states:
+                return
+            
+            device_state = self._device_states[device_name]
+            
+            # Get climate entity state
+            climate_entity_id = self.config.get(CONF_EXISTING_CLIMATE_ENTITY)
+            if not climate_entity_id and self._created_thermostats:
+                climate_entity_id = self._created_thermostats[0]
+            
+            if not climate_entity_id:
+                return
+            
+            climate_state = self.hass.states.get(climate_entity_id)
+            if not climate_state or climate_state.state == STATE_UNAVAILABLE:
+                return
+            
+            # Prepare display update payload
+            display_payload = {}
+            
+            current_mode = climate_state.state
+            if current_mode == "heat":
+                # Show temperature in heat mode
+                target_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
+                display_payload["temperature"] = target_temp
+                device_state["display_mode"] = "temperature"
+                
+            elif current_mode == "off":
+                # Show fan speed in off mode
+                fan_speed = device_state.get("fan_speed", int(self.config.get(CONF_IDLE_FAN_SPEED, DEFAULT_IDLE_FAN_SPEED)))
+                display_payload["fan_speed"] = fan_speed
+                device_state["display_mode"] = "fan_speed"
+            
+            # Add humidity if available
+            humidity = device_state.get("humidity")
+            if humidity is not None:
+                display_payload["humidity"] = humidity
+            
+            # Send display update via MQTT
+            if display_payload:
+                set_topic = MQTT_W100_SET_TOPIC.format(device_name)
+                await mqtt.async_publish(
+                    self.hass,
+                    set_topic,
+                    json.dumps(display_payload),
+                    0,
+                    False
+                )
+                _LOGGER.debug("Synced W100 display for %s: %s", device_name, display_payload)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync W100 display for %s: %s", device_name, err)
+
+    async def async_cleanup(self) -> None:
+        """Clean up coordinator resources."""
+        try:
+            # Unsubscribe from MQTT topics
+            for topic in self._mqtt_subscriptions:
+                try:
+                    await mqtt.async_unsubscribe(self.hass, topic)
+                except Exception as err:
+                    _LOGGER.warning("Failed to unsubscribe from %s: %s", topic, err)
+            
+            self._mqtt_subscriptions.clear()
+            
+            # Clean up created thermostats if requested
+            for entity_id in self._created_thermostats.copy():
                 try:
                     await self.async_remove_generic_thermostat(entity_id)
                 except Exception as err:
-                    _LOGGER.error("Error removing thermostat %s during cleanup: %s", entity_id, err)
+                    _LOGGER.warning("Failed to cleanup thermostat %s: %s", entity_id, err)
             
-            # Clear all data
-            self._created_thermostats.clear()
-            self._thermostat_configs.clear()
-            
-            # Save cleared data
-            await self._async_save_thermostat_data()
-            
-            _LOGGER.info("Removed all thermostats for integration entry %s", self.entry.entry_id)
+            _LOGGER.info("Coordinator cleanup completed")
             
         except Exception as err:
-            _LOGGER.error("Failed to remove all thermostats: %s", err)
-            raise HomeAssistantError(f"Failed to remove all thermostats: {err}") from err
+            _LOGGER.error("Failed to cleanup coordinator: %s", err)
 
     @property
     def created_thermostats(self) -> list[str]:
@@ -620,275 +1069,131 @@ class W100Coordinator(DataUpdateCoordinator):
         return self._created_thermostats.copy()
 
     @property
-    def thermostat_configs(self) -> dict[str, dict[str, Any]]:
-        """Return thermostat configurations."""
-        return self._thermostat_configs.copy()
+    def device_states(self) -> dict[str, dict[str, Any]]:
+        """Return current device states."""
+        return self._device_states.copy()
 
-    async def async_update_config(self, new_config: dict[str, Any]) -> None:
-        """Update integration configuration and apply to created thermostats."""
+    def get_device_state(self, device_name: str) -> dict[str, Any] | None:
+        """Get state for a specific device."""
+        return self._device_states.get(device_name)
+
+    def get_thermostat_config(self, entity_id: str) -> dict[str, Any] | None:
+        """Get configuration for a specific thermostat."""
+        return self._thermostat_configs.get(entity_id)
+
+    async def async_remove_all_thermostats(self) -> None:
+        """Remove all thermostats created by this integration."""
         try:
-            # Update the config entry data
-            old_config = self.config.copy()
-            self.config = {**old_config, **new_config}
+            thermostats_to_remove = self._created_thermostats.copy()
             
-            # Update the entry data
-            self.hass.config_entries.async_update_entry(
-                self.entry, data=self.config
-            )
-            
-            # Apply configuration changes to created thermostats if needed
-            for entity_id in self._created_thermostats:
+            for entity_id in thermostats_to_remove:
                 try:
-                    # Check if thermostat-specific config needs updating
-                    thermostat_config = self._thermostat_configs.get(entity_id, {})
-                    
-                    # Update thermostat name if device name changed
-                    if "w100_device_name" in new_config:
-                        new_device_name = new_config["w100_device_name"]
-                        old_device_name = old_config.get("w100_device_name", "")
-                        
-                        if new_device_name != old_device_name:
-                            # Update thermostat name
-                            new_name = f"W100 {new_device_name.replace('_', ' ').title()} Thermostat"
-                            thermostat_config["name"] = new_name
-                            self._thermostat_configs[entity_id] = thermostat_config
-                            
-                            # Update entity registry
-                            await self._async_update_thermostat_entity(entity_id, thermostat_config)
-                    
+                    await self.async_remove_generic_thermostat(entity_id)
+                    _LOGGER.info("Removed thermostat %s during cleanup", entity_id)
                 except Exception as err:
-                    _LOGGER.error("Failed to update thermostat %s with new config: %s", entity_id, err)
+                    _LOGGER.error("Failed to remove thermostat %s during cleanup: %s", entity_id, err)
             
-            # Save updated thermostat configurations
+            # Clear all tracking data
+            self._created_thermostats.clear()
+            self._thermostat_configs.clear()
+            
+            # Save empty data to storage
             await self._async_save_thermostat_data()
             
-            _LOGGER.info("Updated integration configuration")
+            _LOGGER.info("Removed all thermostats for integration")
             
         except Exception as err:
-            _LOGGER.error("Failed to update integration configuration: %s", err)
-            raise HomeAssistantError(f"Failed to update configuration: {err}") from err
+            _LOGGER.error("Failed to remove all thermostats: %s", err)
 
     async def async_on_entry_update(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Handle integration entry updates."""
+        """Handle config entry updates."""
         try:
-            # Update our stored entry reference
-            self.entry = entry
-            old_config = self.config.copy()
+            # Update stored config
+            old_config = self.config
             self.config = entry.data
             
-            # Check if any thermostat-affecting configuration changed
-            config_changed = False
-            
-            # Check for device name changes
-            old_device_name = old_config.get("w100_device_name", "")
-            new_device_name = self.config.get("w100_device_name", "")
+            # Check if W100 device name changed
+            old_device_name = old_config.get(CONF_W100_DEVICE_NAME)
+            new_device_name = self.config.get(CONF_W100_DEVICE_NAME)
             
             if old_device_name != new_device_name:
-                config_changed = True
-                _LOGGER.info(
-                    "Device name changed from '%s' to '%s', updating thermostats",
-                    old_device_name, new_device_name
-                )
+                _LOGGER.info("W100 device name changed from %s to %s", old_device_name, new_device_name)
+                
+                # Clean up old MQTT subscriptions
+                await self._async_cleanup_mqtt_subscriptions()
+                
+                # Set up new MQTT subscriptions
+                await self._async_setup_mqtt_listeners()
+                
+                # Update device states
+                if old_device_name and old_device_name in self._device_states:
+                    # Move device state to new name
+                    if new_device_name:
+                        self._device_states[new_device_name] = self._device_states.pop(old_device_name)
+                
+                # Initialize new device state if needed
+                await self._async_initialize_device_states()
             
-            # Apply configuration changes to created thermostats
-            if config_changed:
-                await self._async_apply_config_changes(old_config, self.config)
+            # Check if other configuration changed that affects thermostats
+            await self._async_handle_config_changes(old_config, self.config)
             
-            _LOGGER.debug("Processed entry update for %s", entry.entry_id)
+            # Trigger data refresh
+            await self.async_refresh()
             
-        except Exception as err:
-            _LOGGER.error("Error handling entry update: %s", err)
-
-    async def _async_apply_config_changes(self, old_config: dict[str, Any], new_config: dict[str, Any]) -> None:
-        """Apply configuration changes to existing thermostats."""
-        try:
-            for entity_id in self._created_thermostats:
-                thermostat_config = self._thermostat_configs.get(entity_id, {})
-                config_updated = False
-                
-                # Update thermostat name if device name changed
-                old_device_name = old_config.get("w100_device_name", "")
-                new_device_name = new_config.get("w100_device_name", "")
-                
-                if old_device_name != new_device_name and new_device_name:
-                    new_name = f"W100 {new_device_name.replace('_', ' ').title()} Thermostat"
-                    thermostat_config["name"] = new_name
-                    config_updated = True
-                
-                # Save updated configuration
-                if config_updated:
-                    self._thermostat_configs[entity_id] = thermostat_config
-                    await self._async_update_thermostat_entity(entity_id, thermostat_config)
-                    _LOGGER.debug("Updated thermostat %s with new configuration", entity_id)
-            
-            # Save all changes to storage
-            if self._created_thermostats:
-                await self._async_save_thermostat_data()
-                
-        except Exception as err:
-            _LOGGER.error("Error applying configuration changes to thermostats: %s", err)
-
-    async def async_validate_thermostat_entities(self) -> list[str]:
-        """Validate that all created thermostats still exist and are accessible.
-        
-        Returns:
-            List of entity IDs that are no longer valid
-        """
-        invalid_entities = []
-        
-        try:
-            entity_registry = er.async_get(self.hass)
-            
-            for entity_id in self._created_thermostats:
-                # Check if entity exists in registry
-                entity_entry = entity_registry.async_get(entity_id)
-                if not entity_entry:
-                    invalid_entities.append(entity_id)
-                    _LOGGER.warning("Thermostat entity %s no longer exists in registry", entity_id)
-                    continue
-                
-                # Check if entity state is available
-                state = self.hass.states.get(entity_id)
-                if not state or state.state == STATE_UNAVAILABLE:
-                    _LOGGER.warning("Thermostat entity %s is unavailable", entity_id)
-                    # Don't mark as invalid just for being unavailable, as it might recover
-                
-                # Validate that the underlying entities still exist
-                thermostat_config = self._thermostat_configs.get(entity_id, {})
-                heater_entity = thermostat_config.get("heater")
-                target_sensor = thermostat_config.get("target_sensor")
-                
-                if heater_entity and not self.hass.states.get(heater_entity):
-                    _LOGGER.warning(
-                        "Heater entity %s for thermostat %s no longer exists",
-                        heater_entity, entity_id
-                    )
-                
-                if target_sensor and not self.hass.states.get(target_sensor):
-                    _LOGGER.warning(
-                        "Temperature sensor %s for thermostat %s no longer exists",
-                        target_sensor, entity_id
-                    )
+            _LOGGER.debug("Handled config entry update")
             
         except Exception as err:
-            _LOGGER.error("Error validating thermostat entities: %s", err)
-        
-        return invalid_entities
+            _LOGGER.error("Failed to handle config entry update: %s", err)
 
-    async def async_cleanup_invalid_thermostats(self) -> None:
-        """Clean up thermostats that are no longer valid."""
+    async def _async_cleanup_mqtt_subscriptions(self) -> None:
+        """Clean up existing MQTT subscriptions."""
         try:
-            invalid_entities = await self.async_validate_thermostat_entities()
-            
-            for entity_id in invalid_entities:
+            for topic in self._mqtt_subscriptions:
                 try:
-                    # Remove from our tracking
-                    if entity_id in self._created_thermostats:
-                        self._created_thermostats.remove(entity_id)
-                    
-                    # Remove configuration if stored
-                    if entity_id in self._thermostat_configs:
-                        del self._thermostat_configs[entity_id]
-                    
-                    _LOGGER.info("Cleaned up invalid thermostat %s", entity_id)
-                    
+                    await mqtt.async_unsubscribe(self.hass, topic)
+                    _LOGGER.debug("Unsubscribed from MQTT topic: %s", topic)
                 except Exception as err:
-                    _LOGGER.error("Error cleaning up invalid thermostat %s: %s", entity_id, err)
+                    _LOGGER.warning("Failed to unsubscribe from %s: %s", topic, err)
             
-            # Save updated data if we removed any thermostats
-            if invalid_entities:
-                await self._async_save_thermostat_data()
-                
+            self._mqtt_subscriptions.clear()
+            
         except Exception as err:
-            _LOGGER.error("Error during invalid thermostat cleanup: %s", err)
+            _LOGGER.error("Failed to cleanup MQTT subscriptions: %s", err)
 
-    async def _async_setup_thermostat_listeners(self) -> None:
-        """Set up state change listeners for created thermostats."""
+    async def _async_handle_config_changes(self, old_config: dict[str, Any], new_config: dict[str, Any]) -> None:
+        """Handle configuration changes that affect existing thermostats."""
         try:
-            for entity_id in self._created_thermostats:
-                # Set up state change listener for each thermostat
-                self.hass.helpers.event.async_track_state_change_event(
-                    entity_id,
-                    self._async_thermostat_state_changed
-                )
-                _LOGGER.debug("Set up state listener for thermostat %s", entity_id)
+            # Check if generic thermostat configuration changed
+            old_generic_config = old_config.get(CONF_GENERIC_THERMOSTAT_CONFIG, {})
+            new_generic_config = new_config.get(CONF_GENERIC_THERMOSTAT_CONFIG, {})
+            
+            if old_generic_config != new_generic_config and self._created_thermostats:
+                _LOGGER.info("Generic thermostat configuration changed, updating thermostats")
                 
-        except Exception as err:
-            _LOGGER.error("Error setting up thermostat listeners: %s", err)
-
-    @callback
-    def _async_thermostat_state_changed(self, event) -> None:
-        """Handle thermostat state changes."""
-        try:
-            entity_id = event.data.get("entity_id")
-            new_state = event.data.get("new_state")
-            old_state = event.data.get("old_state")
+                # Update all created thermostats with new configuration
+                for entity_id in self._created_thermostats:
+                    try:
+                        await self.async_update_generic_thermostat(entity_id, new_generic_config)
+                    except Exception as err:
+                        _LOGGER.error("Failed to update thermostat %s with new config: %s", entity_id, err)
             
-            if not entity_id or entity_id not in self._created_thermostats:
-                return
+            # Check if other settings changed that affect display sync
+            display_affecting_keys = [
+                CONF_HEATING_TEMPERATURE,
+                CONF_IDLE_TEMPERATURE,
+                CONF_IDLE_FAN_SPEED,
+                CONF_BEEP_MODE,
+            ]
             
-            # Log significant state changes
-            if new_state and old_state:
-                if new_state.state != old_state.state:
-                    _LOGGER.debug(
-                        "Thermostat %s state changed from %s to %s",
-                        entity_id, old_state.state, new_state.state
-                    )
-                
-                # Check for temperature changes
-                old_temp = old_state.attributes.get("temperature")
-                new_temp = new_state.attributes.get("temperature")
-                if old_temp != new_temp:
-                    _LOGGER.debug(
-                        "Thermostat %s temperature changed from %s to %s",
-                        entity_id, old_temp, new_temp
-                    )
+            config_changed = any(
+                old_config.get(key) != new_config.get(key)
+                for key in display_affecting_keys
+            )
             
-            # Handle entity becoming unavailable
-            if new_state and new_state.state == STATE_UNAVAILABLE:
-                _LOGGER.warning("Thermostat %s became unavailable", entity_id)
-                # Schedule validation to check if it recovers
-                self.hass.async_create_task(
-                    self._async_delayed_validation(entity_id)
-                )
+            if config_changed:
+                _LOGGER.debug("Display-affecting configuration changed, updating device states")
+                await self._async_initialize_device_states()
+                await self._async_sync_all_displays()
             
         except Exception as err:
-            _LOGGER.error("Error handling thermostat state change: %s", err)
-
-    async def _async_delayed_validation(self, entity_id: str) -> None:
-        """Perform delayed validation of a thermostat entity."""
-        try:
-            # Wait a bit to see if the entity recovers
-            await asyncio.sleep(30)
-            
-            # Check if entity is still unavailable
-            state = self.hass.states.get(entity_id)
-            if not state or state.state == STATE_UNAVAILABLE:
-                _LOGGER.warning(
-                    "Thermostat %s still unavailable after 30 seconds, running validation",
-                    entity_id
-                )
-                await self.async_cleanup_invalid_thermostats()
-            else:
-                _LOGGER.debug("Thermostat %s recovered", entity_id)
-                
-        except Exception as err:
-            _LOGGER.error("Error in delayed validation for %s: %s", entity_id, err)
-
-    async def async_cleanup(self) -> None:
-        """Clean up coordinator resources."""
-        try:
-            # Remove all thermostats created by this integration
-            await self.async_remove_all_thermostats()
-            
-            # Clean up storage
-            try:
-                await self._storage.async_remove()
-                _LOGGER.debug("Removed thermostat storage for entry %s", self.entry.entry_id)
-            except Exception as err:
-                _LOGGER.warning("Failed to remove thermostat storage: %s", err)
-            
-            _LOGGER.info("Cleaned up W100 coordinator for entry %s", self.entry.entry_id)
-            
-        except Exception as err:
-            _LOGGER.error("Error during coordinator cleanup: %s", err)
+            _LOGGER.error("Failed to handle config changes: %s", err)
