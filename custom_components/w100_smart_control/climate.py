@@ -300,11 +300,11 @@ class W100ClimateEntity(ClimateEntity):
                 err,
             )
 
-    async def async_handle_w100_action(self, action: str) -> None:
-        """Handle W100 button press actions."""
+    async def async_handle_w100_button(self, action: str) -> None:
+        """Handle W100 button press actions with enhanced logic."""
         try:
             _LOGGER.debug(
-                "Handling W100 action %s for device %s",
+                "Handling W100 button action %s for device %s",
                 action,
                 self._device_name,
             )
@@ -312,7 +312,7 @@ class W100ClimateEntity(ClimateEntity):
             current_state = self.target_climate_state
             if not current_state:
                 _LOGGER.warning(
-                    "Target climate entity %s not available for W100 action",
+                    "Target climate entity %s not available for W100 button action",
                     self._target_climate_entity,
                 )
                 return
@@ -320,35 +320,263 @@ class W100ClimateEntity(ClimateEntity):
             current_hvac_mode = current_state.state
             current_temp = current_state.attributes.get("temperature", 21)
             
+            # Handle different button actions based on current mode
             if action == "double":
-                # Toggle between heat and off modes
-                if current_hvac_mode == HVACMode.HEAT:
-                    await self.async_set_hvac_mode(HVACMode.OFF)
-                else:
-                    await self.async_set_hvac_mode(HVACMode.HEAT)
-                    
+                await self._handle_toggle_button(current_hvac_mode)
             elif action == "plus":
-                # Increase temperature when in heat mode
-                if current_hvac_mode == HVACMode.HEAT:
-                    new_temp = min(current_temp + self.target_temperature_step, self.max_temp)
-                    await self.async_set_temperature(temperature=new_temp)
-                    
+                await self._handle_plus_button(current_hvac_mode, current_temp, current_state)
             elif action == "minus":
-                # Decrease temperature when in heat mode
-                if current_hvac_mode == HVACMode.HEAT:
-                    new_temp = max(current_temp - self.target_temperature_step, self.min_temp)
-                    await self.async_set_temperature(temperature=new_temp)
+                await self._handle_minus_button(current_hvac_mode, current_temp, current_state)
+            else:
+                _LOGGER.warning(
+                    "Unknown W100 button action %s for device %s",
+                    action,
+                    self._device_name,
+                )
+                return
             
             _LOGGER.debug(
-                "Completed W100 action %s for device %s",
+                "Completed W100 button action %s for device %s",
                 action,
                 self._device_name,
             )
             
         except Exception as err:
             _LOGGER.error(
-                "Failed to handle W100 action %s for %s: %s",
+                "Failed to handle W100 button action %s for %s: %s",
                 action,
                 self._device_name,
                 err,
             )
+
+    async def _handle_toggle_button(self, current_hvac_mode: str) -> None:
+        """Handle W100 toggle button (double press) - switches between heat and off modes."""
+        try:
+            # Toggle between heat and off modes
+            if current_hvac_mode == HVACMode.HEAT:
+                target_mode = HVACMode.OFF
+            else:
+                target_mode = HVACMode.HEAT
+            
+            # Check if target mode is supported
+            supported_modes = self.hvac_modes
+            if target_mode not in supported_modes:
+                _LOGGER.warning(
+                    "Target HVAC mode %s not supported by %s (supported: %s)",
+                    target_mode,
+                    self._target_climate_entity,
+                    supported_modes,
+                )
+                return
+            
+            await self.async_set_hvac_mode(target_mode)
+            
+            _LOGGER.info(
+                "W100 %s toggle: switched from %s to %s mode",
+                self._device_name,
+                current_hvac_mode,
+                target_mode,
+            )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to handle toggle button for %s: %s",
+                self._device_name,
+                err,
+            )
+
+    async def _handle_plus_button(self, current_hvac_mode: str, current_temp: float, current_state) -> None:
+        """Handle W100 plus button - increases temperature in heat mode or fan speed in other modes."""
+        try:
+            if current_hvac_mode == HVACMode.HEAT:
+                # Increase temperature by the step amount
+                step = self.target_temperature_step
+                new_temp = min(current_temp + step, self.max_temp)
+                
+                if new_temp == current_temp:
+                    _LOGGER.info(
+                        "W100 %s plus: temperature already at maximum (%s°C)",
+                        self._device_name,
+                        current_temp,
+                    )
+                    return
+                
+                await self.async_set_temperature(temperature=new_temp)
+                
+                _LOGGER.info(
+                    "W100 %s plus: increased temperature from %s°C to %s°C",
+                    self._device_name,
+                    current_temp,
+                    new_temp,
+                )
+                
+            elif current_hvac_mode in [HVACMode.FAN_ONLY, HVACMode.COOL]:
+                # Try to increase fan speed if supported
+                await self._adjust_fan_speed(current_state, increase=True)
+                
+            else:
+                _LOGGER.debug(
+                    "W100 %s plus button not applicable in mode %s",
+                    self._device_name,
+                    current_hvac_mode,
+                )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to handle plus button for %s: %s",
+                self._device_name,
+                err,
+            )
+
+    async def _handle_minus_button(self, current_hvac_mode: str, current_temp: float, current_state) -> None:
+        """Handle W100 minus button - decreases temperature in heat mode or fan speed in other modes."""
+        try:
+            if current_hvac_mode == HVACMode.HEAT:
+                # Decrease temperature by the step amount
+                step = self.target_temperature_step
+                new_temp = max(current_temp - step, self.min_temp)
+                
+                if new_temp == current_temp:
+                    _LOGGER.info(
+                        "W100 %s minus: temperature already at minimum (%s°C)",
+                        self._device_name,
+                        current_temp,
+                    )
+                    return
+                
+                await self.async_set_temperature(temperature=new_temp)
+                
+                _LOGGER.info(
+                    "W100 %s minus: decreased temperature from %s°C to %s°C",
+                    self._device_name,
+                    current_temp,
+                    new_temp,
+                )
+                
+            elif current_hvac_mode in [HVACMode.FAN_ONLY, HVACMode.COOL]:
+                # Try to decrease fan speed if supported
+                await self._adjust_fan_speed(current_state, increase=False)
+                
+            else:
+                _LOGGER.debug(
+                    "W100 %s minus button not applicable in mode %s",
+                    self._device_name,
+                    current_hvac_mode,
+                )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to handle minus button for %s: %s",
+                self._device_name,
+                err,
+            )
+
+    async def _adjust_fan_speed(self, current_state, increase: bool = True) -> None:
+        """Adjust fan speed if the climate entity supports it."""
+        try:
+            # Check if fan mode is supported
+            supported_features = self.supported_features
+            if not (supported_features & ClimateEntityFeature.FAN_MODE):
+                _LOGGER.debug(
+                    "Climate entity %s does not support fan mode control",
+                    self._target_climate_entity,
+                )
+                return
+            
+            current_fan_mode = current_state.attributes.get("fan_mode")
+            fan_modes = current_state.attributes.get("fan_modes", [])
+            
+            if not fan_modes or not current_fan_mode:
+                _LOGGER.debug(
+                    "No fan modes available for %s",
+                    self._target_climate_entity,
+                )
+                return
+            
+            # Try numeric fan speed adjustment first
+            try:
+                current_speed = int(current_fan_mode)
+                if increase:
+                    new_speed = min(current_speed + 1, 9)
+                else:
+                    new_speed = max(current_speed - 1, 1)
+                
+                new_fan_mode = str(new_speed)
+                
+                if new_fan_mode in fan_modes and new_fan_mode != current_fan_mode:
+                    await self.hass.services.async_call(
+                        "climate",
+                        "set_fan_mode",
+                        {
+                            "entity_id": self._target_climate_entity,
+                            "fan_mode": new_fan_mode,
+                        },
+                        blocking=True,
+                    )
+                    
+                    _LOGGER.info(
+                        "W100 %s: %s fan speed from %s to %s",
+                        self._device_name,
+                        "increased" if increase else "decreased",
+                        current_fan_mode,
+                        new_fan_mode,
+                    )
+                    return
+                    
+            except (ValueError, TypeError):
+                # Fall back to list-based fan mode adjustment
+                pass
+            
+            # Try list-based fan mode adjustment
+            try:
+                current_index = fan_modes.index(current_fan_mode)
+                if increase and current_index < len(fan_modes) - 1:
+                    new_fan_mode = fan_modes[current_index + 1]
+                elif not increase and current_index > 0:
+                    new_fan_mode = fan_modes[current_index - 1]
+                else:
+                    _LOGGER.debug(
+                        "Cannot %s fan speed for %s (current: %s, at %s)",
+                        "increase" if increase else "decrease",
+                        self._target_climate_entity,
+                        current_fan_mode,
+                        "maximum" if increase else "minimum",
+                    )
+                    return
+                
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_fan_mode",
+                    {
+                        "entity_id": self._target_climate_entity,
+                        "fan_mode": new_fan_mode,
+                    },
+                    blocking=True,
+                )
+                
+                _LOGGER.info(
+                    "W100 %s: %s fan mode from %s to %s",
+                    self._device_name,
+                    "increased" if increase else "decreased",
+                    current_fan_mode,
+                    new_fan_mode,
+                )
+                
+            except (ValueError, IndexError):
+                _LOGGER.debug(
+                    "Cannot adjust fan speed for %s (current: %s, available: %s)",
+                    self._target_climate_entity,
+                    current_fan_mode,
+                    fan_modes,
+                )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to adjust fan speed for %s: %s",
+                self._target_climate_entity,
+                err,
+            )
+
+    async def async_handle_w100_action(self, action: str) -> None:
+        """Handle W100 button press actions (legacy method - redirects to new method)."""
+        await self.async_handle_w100_button(action)

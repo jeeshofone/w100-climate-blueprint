@@ -2300,7 +2300,10 @@ class W100Coordinator(DataUpdateCoordinator):
                     entity = self.hass.data.get("entity_components", {}).get("climate")
                     if entity:
                         climate_entity = entity.get_entity(entity_id)
-                        if climate_entity and hasattr(climate_entity, 'async_handle_w100_action'):
+                        if climate_entity and hasattr(climate_entity, 'async_handle_w100_button'):
+                            await climate_entity.async_handle_w100_button(action)
+                        elif climate_entity and hasattr(climate_entity, 'async_handle_w100_action'):
+                            # Fallback to legacy method for backward compatibility
                             await climate_entity.async_handle_w100_action(action)
                             _LOGGER.debug(
                                 "Routed W100 action %s to climate entity %s for device %s",
