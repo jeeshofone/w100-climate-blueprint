@@ -127,22 +127,22 @@ async def test_device_registry_integration():
         
         coordinator = W100Coordinator(hass, entry)
         
-        # Test device registration
+        # Test logical device creation (not physical W100 device)
         device_name = "living_room_w100"
-        device_id = await coordinator._async_register_single_w100_device(device_name)
+        device_id = await coordinator._async_create_logical_device(device_name)
         
-        # Verify device was created
+        # Verify logical device was created
         assert device_id in device_registry.devices
         device = device_registry.devices[device_id]
-        assert "W100" in device.name
-        assert device.manufacturer == "Aqara"
-        assert device.model == "W100 Smart Control"
+        assert "W100 Control" in device.name
+        assert device.manufacturer == "W100 Smart Control Integration"
+        assert device.model == "Climate Controller"
         
-        _LOGGER.info("✓ Device registration test passed")
+        _LOGGER.info("✓ Logical device creation test passed")
         
-        # Test climate entity registration
-        entity_id = "climate.w100_living_room_climate"
-        await coordinator.async_register_w100_climate_entity(device_name, entity_id)
+        # Test proxy climate entity registration
+        entity_id = "climate.w100_living_room_control"
+        await coordinator.async_register_proxy_climate_entity(device_name, entity_id)
         
         # Verify entity was created and linked to device
         climate_entities = [e for e in entity_registry.entities.values() 
@@ -153,7 +153,7 @@ async def test_device_registry_integration():
         assert climate_entity.device_id == device_id
         assert "w100_smart_control" in climate_entity.unique_id
         
-        _LOGGER.info("✓ Climate entity registration test passed")
+        _LOGGER.info("✓ Proxy climate entity registration test passed")
 
 async def test_climate_entity_device_info():
     """Test climate entity device info configuration."""
@@ -175,12 +175,12 @@ async def test_climate_entity_device_info():
             device_name="test_w100"
         )
         
-        # Check device info
+        # Check device info (should reference logical device, not physical W100)
         device_info = climate_entity._attr_device_info
         assert device_info is not None
-        assert device_info["manufacturer"] == "Aqara"
-        assert device_info["model"] == "W100 Smart Control"
-        assert "test_w100" in str(device_info["identifiers"])
+        assert device_info["manufacturer"] == "W100 Smart Control Integration"
+        assert device_info["model"] == "Climate Controller"
+        assert "w100_control_test_w100" in str(device_info["identifiers"])
         assert "configuration_url" in device_info
         
         _LOGGER.info("✓ Climate entity device info test passed")
@@ -219,6 +219,52 @@ async def test_entity_customization_support():
         
         _LOGGER.info("✓ Entity customization support test passed")
 
+async def test_no_zigbee2mqtt_conflicts():
+    """Test that integration doesn't conflict with Zigbee2MQTT device registration."""
+    _LOGGER.info("Testing no conflicts with Zigbee2MQTT...")
+    
+    device_registry = MockDeviceRegistry()
+    
+    # Simulate existing Zigbee2MQTT device
+    z2m_device = device_registry.async_get_or_create(
+        config_entry_id="zigbee2mqtt_entry",
+        identifiers={("zigbee2mqtt", "living_room_w100")},
+        name="Aqara W100 Living Room",
+        manufacturer="Aqara",
+        model="W100",
+        via_device=("zigbee2mqtt", "coordinator")
+    )
+    
+    with patch('custom_components.w100_smart_control.coordinator.dr') as mock_dr:
+        mock_dr.async_get.return_value = device_registry
+        
+        from custom_components.w100_smart_control.coordinator import W100Coordinator
+        
+        hass = MockHomeAssistant()
+        entry = MockConfigEntry()
+        coordinator = W100Coordinator(hass, entry)
+        
+        # Create our logical device
+        device_name = "living_room_w100"
+        logical_device_id = await coordinator._async_create_logical_device(device_name)
+        
+        # Verify we created a separate logical device, not conflicting with Z2M
+        logical_device = device_registry.devices[logical_device_id]
+        
+        # Check identifiers are different
+        z2m_identifiers = {("zigbee2mqtt", "living_room_w100")}
+        logical_identifiers = {("w100_smart_control", "w100_control_living_room_w100")}
+        
+        assert z2m_device.identifiers == z2m_identifiers
+        assert logical_device.identifiers == logical_identifiers
+        assert z2m_device.identifiers != logical_device.identifiers
+        
+        # Check manufacturers are different
+        assert z2m_device.manufacturer == "Aqara"
+        assert logical_device.manufacturer == "W100 Smart Control Integration"
+        
+        _LOGGER.info("✓ No Zigbee2MQTT conflicts test passed")
+
 async def main():
     """Run all registry integration tests."""
     _LOGGER.info("Starting W100 Smart Control registry integration tests...")
@@ -227,6 +273,7 @@ async def main():
         await test_device_registry_integration()
         await test_climate_entity_device_info()
         await test_entity_customization_support()
+        await test_no_zigbee2mqtt_conflicts()
         
         _LOGGER.info("🎉 All registry integration tests passed!")
         
