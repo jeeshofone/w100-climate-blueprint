@@ -1,5 +1,7 @@
 # Aqara W100 Smart Control Integration
 
+# THIS IS A WORK IN PROGRESS AND IS UNTESTED
+
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1+-blue.svg)](https://www.home-assistant.io/)
 [![HACS](https://img.shields.io/badge/HACS-Integration-orange.svg)](https://hacs.xyz/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
