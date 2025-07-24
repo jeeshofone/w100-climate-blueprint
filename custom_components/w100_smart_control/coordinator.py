@@ -182,7 +182,7 @@ class W100Coordinator(DataUpdateCoordinator):
             device_name = self.config.get(CONF_W100_DEVICE_NAME)
             if device_name:
                 self.hass.async_create_task(
-                    self._async_sync_w100_display(device_name)
+                    self.async_sync_w100_display(device_name)
                 )
             
         except Exception as err:
@@ -924,7 +924,7 @@ class W100Coordinator(DataUpdateCoordinator):
         """Sync W100 display after a delay to allow state changes to settle."""
         try:
             await asyncio.sleep(DISPLAY_UPDATE_DELAY_SECONDS)
-            await self._async_sync_w100_display(device_name)
+            await self.async_sync_w100_display(device_name)
         except Exception as err:
             _LOGGER.error("Failed to sync W100 display for %s: %s", device_name, err)
 
@@ -1123,16 +1123,29 @@ class W100Coordinator(DataUpdateCoordinator):
         """Sync all W100 displays with current states."""
         try:
             for device_name in self._device_states:
-                await self._async_sync_w100_display(device_name)
+                await self.async_sync_w100_display(device_name)
         except Exception as err:
             _LOGGER.error("Failed to sync all displays: %s", err)
 
-    async def _async_sync_w100_display(self, device_name: str) -> None:
-        """Sync W100 display with current climate state."""
+    async def async_sync_w100_display(self, device_name: str) -> None:
+        """Enhanced W100 display synchronization system.
+        
+        Implements comprehensive display synchronization with:
+        - Temperature display in heat mode
+        - Fan speed display in off/fan modes  
+        - Humidity synchronization with sensor values
+        - Display mode switching based on climate entity state
+        - Error handling and fallback mechanisms
+        
+        Requirements: 5.4, 5.5, 8.3
+        """
         try:
             if device_name not in self._device_states:
-                _LOGGER.debug("Device %s not in device states, skipping display sync", device_name)
-                return
+                _LOGGER.debug("Device %s not in device states, initializing", device_name)
+                await self._async_initialize_device_states()
+                if device_name not in self._device_states:
+                    _LOGGER.warning("Failed to initialize device state for %s", device_name)
+                    return
             
             device_state = self._device_states[device_name]
             
@@ -1147,8 +1160,9 @@ class W100Coordinator(DataUpdateCoordinator):
             
             climate_state = self.hass.states.get(climate_entity_id)
             if not climate_state or climate_state.state == STATE_UNAVAILABLE:
-                _LOGGER.debug("Climate entity %s unavailable for device %s, skipping display sync", 
+                _LOGGER.debug("Climate entity %s unavailable for device %s, using fallback display", 
                              climate_entity_id, device_name)
+                await self._async_sync_fallback_display(device_name, device_state)
                 return
             
             # Check if MQTT is available
@@ -1156,66 +1170,405 @@ class W100Coordinator(DataUpdateCoordinator):
                 _LOGGER.debug("MQTT not available, skipping display sync for %s", device_name)
                 return
             
-            # Prepare display update payload
+            # Prepare comprehensive display update payload
             display_payload = {}
-            
             current_mode = climate_state.state
+            
+            # Handle display mode switching based on climate entity state
             if current_mode == "heat":
-                # Show temperature in heat mode
-                target_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
+                await self._async_sync_heat_mode_display(
+                    device_name, device_state, climate_state, display_payload
+                )
+            elif current_mode == "off":
+                await self._async_sync_off_mode_display(
+                    device_name, device_state, climate_state, display_payload
+                )
+            elif current_mode == "fan":
+                await self._async_sync_fan_mode_display(
+                    device_name, device_state, climate_state, display_payload
+                )
+            elif current_mode == "cool":
+                await self._async_sync_cool_mode_display(
+                    device_name, device_state, climate_state, display_payload
+                )
+            else:
+                _LOGGER.debug("Unknown climate mode %s for %s, using default display", 
+                             current_mode, device_name)
+                await self._async_sync_default_display(
+                    device_name, device_state, climate_state, display_payload
+                )
+            
+            # Add humidity synchronization with sensor values
+            await self._async_sync_humidity_display(device_name, device_state, display_payload)
+            
+            # Add additional W100 specific display parameters
+            await self._async_sync_advanced_display_features(
+                device_name, device_state, climate_state, display_payload
+            )
+            
+            # Send display update via MQTT with retry logic
+            await self._async_send_display_update(device_name, display_payload)
+            
+            # Update device state tracking
+            device_state.update({
+                "last_display_sync": datetime.now(),
+                "last_sync_mode": current_mode,
+                "last_sync_payload": display_payload.copy(),
+            })
+            
+            _LOGGER.debug("Successfully synced W100 display for %s in mode %s", 
+                         device_name, current_mode)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync W100 display for %s: %s", device_name, err)
+            # Attempt fallback display sync
+            try:
+                await self._async_sync_fallback_display(device_name, self._device_states.get(device_name, {}))
+            except Exception as fallback_err:
+                _LOGGER.error("Fallback display sync also failed for %s: %s", device_name, fallback_err)
+
+    async def _async_sync_heat_mode_display(self, device_name: str, device_state: dict, 
+                                          climate_state, display_payload: dict) -> None:
+        """Sync display for heat mode - shows temperature."""
+        try:
+            # Get target temperature from climate entity
+            target_temp = climate_state.attributes.get("temperature")
+            if target_temp is None:
+                # Fallback to configured heating temperature
+                target_temp = self.config.get(CONF_HEATING_TEMPERATURE, DEFAULT_HEATING_TEMPERATURE)
+                _LOGGER.debug("No target temperature from climate entity, using configured heating temp %s°C", 
+                             target_temp)
+            
+            # Ensure temperature is within valid range
+            min_temp = climate_state.attributes.get("min_temp", DEFAULT_MIN_TEMP)
+            max_temp = climate_state.attributes.get("max_temp", DEFAULT_MAX_TEMP)
+            target_temp = max(min_temp, min(max_temp, float(target_temp)))
+            
+            # Set temperature display
+            display_payload["temperature"] = target_temp
+            device_state["display_mode"] = "temperature"
+            device_state["target_temperature"] = target_temp
+            
+            # Add current temperature for reference
+            current_temp = climate_state.attributes.get("current_temperature")
+            if current_temp is not None:
+                display_payload["current_temperature"] = float(current_temp)
+                device_state["current_temperature"] = float(current_temp)
+            
+            # Set heating warm level
+            warm_level = self.config.get(CONF_HEATING_WARM_LEVEL, DEFAULT_HEATING_WARM_LEVEL)
+            display_payload["warm_level"] = int(warm_level)
+            
+            _LOGGER.debug("W100 %s heat mode display: temp=%s°C, warm_level=%s", 
+                         device_name, target_temp, warm_level)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync heat mode display for %s: %s", device_name, err)
+            # Fallback to basic temperature display
+            display_payload["temperature"] = DEFAULT_HEATING_TEMPERATURE
+            device_state["display_mode"] = "temperature"
+
+    async def _async_sync_off_mode_display(self, device_name: str, device_state: dict, 
+                                         climate_state, display_payload: dict) -> None:
+        """Sync display for off mode - shows fan speed."""
+        try:
+            # Get configured idle fan speed
+            idle_fan_speed = self.config.get(CONF_IDLE_FAN_SPEED, DEFAULT_IDLE_FAN_SPEED)
+            fan_speed = int(idle_fan_speed)
+            
+            # Set fan speed display
+            display_payload["fan_speed"] = fan_speed
+            device_state["display_mode"] = "fan_speed"
+            device_state["fan_speed"] = fan_speed
+            
+            # Set idle temperature for reference
+            idle_temp = self.config.get(CONF_IDLE_TEMPERATURE, DEFAULT_IDLE_TEMPERATURE)
+            display_payload["idle_temperature"] = float(idle_temp)
+            
+            # Set idle warm level
+            idle_warm_level = self.config.get(CONF_IDLE_WARM_LEVEL, DEFAULT_IDLE_WARM_LEVEL)
+            display_payload["warm_level"] = int(idle_warm_level)
+            
+            # Add swing mode
+            swing_mode = self.config.get(CONF_SWING_MODE, DEFAULT_SWING_MODE)
+            display_payload["swing_mode"] = swing_mode
+            
+            _LOGGER.debug("W100 %s off mode display: fan_speed=%s, idle_temp=%s°C, swing=%s", 
+                         device_name, fan_speed, idle_temp, swing_mode)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync off mode display for %s: %s", device_name, err)
+            # Fallback to basic fan speed display
+            display_payload["fan_speed"] = int(DEFAULT_IDLE_FAN_SPEED)
+            device_state["display_mode"] = "fan_speed"
+
+    async def _async_sync_fan_mode_display(self, device_name: str, device_state: dict, 
+                                         climate_state, display_payload: dict) -> None:
+        """Sync display for fan mode - shows current fan speed."""
+        try:
+            # Get current fan speed from climate entity
+            current_fan_speed = climate_state.attributes.get("fan_mode", "1")
+            
+            try:
+                fan_speed_num = int(current_fan_speed)
+            except (ValueError, TypeError):
+                # Try to map named fan speeds to numbers
+                fan_speed_mapping = {
+                    "low": 1, "medium": 3, "high": 6, "auto": 3,
+                    "quiet": 1, "normal": 3, "turbo": 9
+                }
+                fan_speed_num = fan_speed_mapping.get(current_fan_speed.lower(), 3)
+                _LOGGER.debug("Mapped fan speed '%s' to %s for %s", 
+                             current_fan_speed, fan_speed_num, device_name)
+            
+            # Ensure fan speed is in valid range (1-9)
+            fan_speed_num = max(1, min(9, fan_speed_num))
+            
+            # Set fan speed display
+            display_payload["fan_speed"] = fan_speed_num
+            device_state["display_mode"] = "fan_speed"
+            device_state["fan_speed"] = fan_speed_num
+            
+            # Add swing mode if supported
+            swing_mode = climate_state.attributes.get("swing_mode")
+            if swing_mode:
+                display_payload["swing_mode"] = swing_mode
+            else:
+                # Use configured swing mode
+                swing_mode = self.config.get(CONF_SWING_MODE, DEFAULT_SWING_MODE)
+                display_payload["swing_mode"] = swing_mode
+            
+            _LOGGER.debug("W100 %s fan mode display: fan_speed=%s, swing=%s", 
+                         device_name, fan_speed_num, swing_mode)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync fan mode display for %s: %s", device_name, err)
+            # Fallback to default fan speed
+            display_payload["fan_speed"] = 3
+            device_state["display_mode"] = "fan_speed"
+
+    async def _async_sync_cool_mode_display(self, device_name: str, device_state: dict, 
+                                          climate_state, display_payload: dict) -> None:
+        """Sync display for cool mode - shows temperature and fan speed."""
+        try:
+            # Get target temperature
+            target_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
+            target_temp = float(target_temp)
+            
+            # Set temperature display
+            display_payload["temperature"] = target_temp
+            device_state["target_temperature"] = target_temp
+            
+            # Get fan speed for cooling
+            current_fan_speed = climate_state.attributes.get("fan_mode", "3")
+            try:
+                fan_speed_num = int(current_fan_speed)
+            except (ValueError, TypeError):
+                fan_speed_num = 3
+            
+            fan_speed_num = max(1, min(9, fan_speed_num))
+            display_payload["fan_speed"] = fan_speed_num
+            device_state["fan_speed"] = fan_speed_num
+            
+            # Set display mode to show both temperature and fan
+            device_state["display_mode"] = "temperature_fan"
+            
+            _LOGGER.debug("W100 %s cool mode display: temp=%s°C, fan_speed=%s", 
+                         device_name, target_temp, fan_speed_num)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync cool mode display for %s: %s", device_name, err)
+            # Fallback to temperature display
+            display_payload["temperature"] = DEFAULT_TARGET_TEMP
+            device_state["display_mode"] = "temperature"
+
+    async def _async_sync_default_display(self, device_name: str, device_state: dict, 
+                                        climate_state, display_payload: dict) -> None:
+        """Sync display for unknown/default modes."""
+        try:
+            # Default to showing temperature if available
+            target_temp = climate_state.attributes.get("temperature")
+            if target_temp is not None:
                 display_payload["temperature"] = float(target_temp)
                 device_state["display_mode"] = "temperature"
-                _LOGGER.debug("W100 %s display: showing temperature %s°C (heat mode)", 
-                             device_name, target_temp)
-                
-            elif current_mode == "off":
-                # Show fan speed in off mode
-                fan_speed = device_state.get("fan_speed", int(self.config.get(CONF_IDLE_FAN_SPEED, DEFAULT_IDLE_FAN_SPEED)))
-                display_payload["fan_speed"] = int(fan_speed)
+                device_state["target_temperature"] = float(target_temp)
+            else:
+                # Fallback to fan speed
+                fan_speed = int(self.config.get(CONF_IDLE_FAN_SPEED, DEFAULT_IDLE_FAN_SPEED))
+                display_payload["fan_speed"] = fan_speed
                 device_state["display_mode"] = "fan_speed"
-                _LOGGER.debug("W100 %s display: showing fan speed %s (off mode)", 
-                             device_name, fan_speed)
+                device_state["fan_speed"] = fan_speed
+            
+            _LOGGER.debug("W100 %s default display mode: %s", 
+                         device_name, device_state["display_mode"])
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync default display for %s: %s", device_name, err)
+
+    async def _async_sync_humidity_display(self, device_name: str, device_state: dict, 
+                                         display_payload: dict) -> None:
+        """Sync humidity display with sensor values."""
+        try:
+            humidity_value = None
+            
+            # Try primary humidity sensor
+            humidity_sensor = self.config.get(CONF_HUMIDITY_SENSOR)
+            if humidity_sensor:
+                humidity_state = self.hass.states.get(humidity_sensor)
+                if humidity_state and humidity_state.state not in [STATE_UNAVAILABLE, "unknown"]:
+                    try:
+                        humidity_value = float(humidity_state.state)
+                        _LOGGER.debug("Got humidity %s%% from primary sensor %s for %s", 
+                                     humidity_value, humidity_sensor, device_name)
+                    except (ValueError, TypeError):
+                        _LOGGER.debug("Invalid humidity value from primary sensor %s: %s", 
+                                     humidity_sensor, humidity_state.state)
+            
+            # Try backup humidity sensor if primary failed
+            if humidity_value is None:
+                backup_humidity_sensor = self.config.get(CONF_BACKUP_HUMIDITY_SENSOR)
+                if backup_humidity_sensor:
+                    backup_state = self.hass.states.get(backup_humidity_sensor)
+                    if backup_state and backup_state.state not in [STATE_UNAVAILABLE, "unknown"]:
+                        try:
+                            humidity_value = float(backup_state.state)
+                            _LOGGER.debug("Got humidity %s%% from backup sensor %s for %s", 
+                                         humidity_value, backup_humidity_sensor, device_name)
+                        except (ValueError, TypeError):
+                            _LOGGER.debug("Invalid humidity value from backup sensor %s: %s", 
+                                         backup_humidity_sensor, backup_state.state)
+            
+            # Use existing device state humidity if no sensors available
+            if humidity_value is None:
+                humidity_value = device_state.get("humidity")
+                if humidity_value is not None:
+                    _LOGGER.debug("Using cached humidity %s%% for %s", humidity_value, device_name)
+            
+            # Set humidity in display payload if available
+            if humidity_value is not None:
+                # Ensure humidity is in valid range (0-100%)
+                humidity_value = max(0, min(100, humidity_value))
+                display_payload["humidity"] = humidity_value
+                device_state["humidity"] = humidity_value
+                _LOGGER.debug("W100 %s humidity display: %s%%", device_name, humidity_value)
+            else:
+                _LOGGER.debug("No humidity data available for %s", device_name)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync humidity display for %s: %s", device_name, err)
+
+    async def _async_sync_advanced_display_features(self, device_name: str, device_state: dict, 
+                                                  climate_state, display_payload: dict) -> None:
+        """Sync advanced W100 display features and parameters."""
+        try:
+            # Add beep mode configuration
+            beep_mode = self.config.get(CONF_BEEP_MODE, DEFAULT_BEEP_MODE)
+            if beep_mode == "Enable Beep":
+                display_payload["beep"] = True
+            elif beep_mode == "Disable Beep":
+                display_payload["beep"] = False
+            elif beep_mode == "On-Mode Change":
+                # Enable beep only for mode changes
+                display_payload["beep_on_change"] = True
+            
+            device_state["beep_enabled"] = beep_mode != "Disable Beep"
+            
+            # Add display brightness/intensity if supported
+            # This could be extended based on W100 capabilities
+            display_payload["display_brightness"] = 100  # Full brightness
+            
+            # Add last action information for display context
+            last_action = device_state.get("last_action")
+            if last_action:
+                display_payload["last_action"] = last_action
                 
-            elif current_mode == "fan":
-                # Show fan speed in fan mode
-                current_fan_speed = climate_state.attributes.get("fan_mode", "1")
-                try:
-                    fan_speed_num = int(current_fan_speed)
-                    display_payload["fan_speed"] = fan_speed_num
-                    device_state["display_mode"] = "fan_speed"
-                    _LOGGER.debug("W100 %s display: showing fan speed %s (fan mode)", 
-                                 device_name, fan_speed_num)
-                except (ValueError, TypeError):
-                    _LOGGER.debug("Cannot parse fan speed %s for display sync", current_fan_speed)
+                # Add action timestamp for display timeout
+                last_action_time = device_state.get("last_action_time")
+                if last_action_time:
+                    time_since_action = (datetime.now() - last_action_time).total_seconds()
+                    display_payload["action_age"] = int(time_since_action)
+            
+            # Add device status indicators
+            display_payload["status"] = "online"
+            display_payload["last_update"] = datetime.now().isoformat()
+            
+            _LOGGER.debug("W100 %s advanced display features: beep=%s, brightness=100", 
+                         device_name, beep_mode)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to sync advanced display features for %s: %s", device_name, err)
+
+    async def _async_sync_fallback_display(self, device_name: str, device_state: dict) -> None:
+        """Sync fallback display when climate entity is unavailable."""
+        try:
+            fallback_payload = {}
+            
+            # Use last known good values or defaults
+            if device_state.get("display_mode") == "temperature":
+                temp = device_state.get("target_temperature", DEFAULT_HEATING_TEMPERATURE)
+                fallback_payload["temperature"] = float(temp)
+            else:
+                fan_speed = device_state.get("fan_speed", int(DEFAULT_IDLE_FAN_SPEED))
+                fallback_payload["fan_speed"] = int(fan_speed)
             
             # Add humidity if available
             humidity = device_state.get("humidity")
             if humidity is not None:
-                try:
-                    display_payload["humidity"] = float(humidity)
-                    _LOGGER.debug("W100 %s display: including humidity %s%%", device_name, humidity)
-                except (ValueError, TypeError):
-                    _LOGGER.debug("Invalid humidity value for display: %s", humidity)
+                fallback_payload["humidity"] = float(humidity)
             
-            # Send display update via MQTT
-            if display_payload:
+            # Add status indicator
+            fallback_payload["status"] = "offline"
+            fallback_payload["beep"] = False  # Disable beep in fallback mode
+            
+            await self._async_send_display_update(device_name, fallback_payload)
+            
+            _LOGGER.debug("Sent fallback display update for %s: %s", device_name, fallback_payload)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to send fallback display for %s: %s", device_name, err)
+
+    async def _async_send_display_update(self, device_name: str, display_payload: dict) -> None:
+        """Send display update via MQTT with retry logic."""
+        if not display_payload:
+            _LOGGER.debug("No display data to send for %s", device_name)
+            return
+        
+        max_retries = 3
+        retry_delay = 1.0
+        
+        for attempt in range(max_retries):
+            try:
                 set_topic = MQTT_W100_SET_TOPIC.format(device_name)
-                payload_json = json.dumps(display_payload)
+                payload_json = json.dumps(display_payload, default=str)
                 
                 await mqtt.async_publish(
                     self.hass,
                     set_topic,
                     payload_json,
-                    0,
-                    False
+                    qos=0,
+                    retain=False
                 )
-                _LOGGER.debug("Synced W100 display for %s via %s: %s", 
-                             device_name, set_topic, display_payload)
-            else:
-                _LOGGER.debug("No display data to sync for W100 %s", device_name)
-            
-        except Exception as err:
-            _LOGGER.error("Failed to sync W100 display for %s: %s", device_name, err)
+                
+                _LOGGER.debug("Sent W100 display update for %s via %s (attempt %d): %s", 
+                             device_name, set_topic, attempt + 1, display_payload)
+                return  # Success, exit retry loop
+                
+            except Exception as err:
+                _LOGGER.warning("Failed to send display update for %s (attempt %d/%d): %s", 
+                               device_name, attempt + 1, max_retries, err)
+                
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    _LOGGER.error("Failed to send display update for %s after %d attempts", 
+                                 device_name, max_retries)
+                    raise
+
+    # Keep the old method name for backward compatibility
+    async def _async_sync_w100_display(self, device_name: str) -> None:
+        """Legacy method - redirects to new enhanced sync method."""
+        await self.async_sync_w100_display(device_name)
 
     async def async_cleanup(self) -> None:
         """Clean up coordinator resources."""
