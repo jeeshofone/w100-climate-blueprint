@@ -294,11 +294,6 @@ trigger:
     entity_id: !input fan_climate_entity
     attribute: fan_mode
     id: w100_sync
-  # Philips fan preset mode trigger (when fan entity is configured)
-  - platform: state
-    entity_id: !input fan_entity
-    attribute: preset_mode
-    id: w100_sync
   # W100 startup trigger
   - platform: homeassistant
     event: start
@@ -370,11 +365,16 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       preset_mode: !input philips_heating_preset
-                  - service: number.set_value
-                    target:
-                      entity_id: !input temperature_number_entity
-                    data:
-                      value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ philips_temp_entity != '' }}"
+                        sequence:
+                          - service: number.set_value
+                            target:
+                              entity_id: !input temperature_number_entity
+                            data:
+                              value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -713,11 +713,16 @@ action:
                           new_preset: "{{ preset_order[new_index] }}"
                           preset_to_number: {"low": 2, "medium": 5, "high": 7, "auto_plus": 9}
                           display_value: "{{ preset_to_number[new_preset] }}"
-                      - service: fan.set_preset_mode
-                        target:
-                          entity_id: !input fan_entity
-                        data:
-                          preset_mode: "{{ new_preset }}"
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ philips_fan_entity != '' }}"
+                            sequence:
+                              - service: fan.set_preset_mode
+                                target:
+                                  entity_id: !input fan_entity
+                                data:
+                                  preset_mode: "{{ new_preset }}"
                       - service: select.select_option
                         target:
                           entity_id: "select.{{ w100_name }}_sensor"
@@ -821,11 +826,16 @@ action:
                           new_preset: "{{ preset_order[new_index] }}"
                           preset_to_number: {"low": 2, "medium": 5, "high": 7, "auto_plus": 9}
                           display_value: "{{ preset_to_number[new_preset] }}"
-                      - service: fan.set_preset_mode
-                        target:
-                          entity_id: !input fan_entity
-                        data:
-                          preset_mode: "{{ new_preset }}"
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ philips_fan_entity != '' }}"
+                            sequence:
+                              - service: fan.set_preset_mode
+                                target:
+                                  entity_id: !input fan_entity
+                                data:
+                                  preset_mode: "{{ new_preset }}"
                       - service: select.select_option
                         target:
                           entity_id: "select.{{ w100_name }}_sensor"
