@@ -17,6 +17,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.components import mqtt
+from homeassistant.components.mqtt.models import ReceiveMessage
 
 # Generic thermostat domain constant
 GENERIC_THERMOSTAT_DOMAIN = "generic_thermostat"
@@ -701,60 +702,90 @@ class W100Coordinator(DataUpdateCoordinator):
                 _LOGGER.warning("No W100 device name configured, skipping MQTT setup")
                 return
             
+            # Check if MQTT is available
+            if not self.hass.services.has_service("mqtt", "publish"):
+                _LOGGER.error("MQTT integration not available, cannot set up W100 listeners")
+                return
+            
+            # Clean up any existing subscriptions first
+            await self._async_cleanup_mqtt_subscriptions()
+            
             # Set up action listener
             action_topic = MQTT_W100_ACTION_TOPIC.format(device_name)
             
             @callback
-            def handle_w100_action(msg):
+            def handle_w100_action(msg: ReceiveMessage) -> None:
                 """Handle W100 action messages."""
                 try:
                     action = msg.payload
                     _LOGGER.debug("Received W100 action: %s from device %s", action, device_name)
+                    
+                    # Validate action
+                    if action not in [W100_ACTION_TOGGLE, W100_ACTION_PLUS, W100_ACTION_MINUS]:
+                        _LOGGER.debug("Unknown W100 action received: %s", action)
+                        return
                     
                     # Schedule action handling
                     self.hass.async_create_task(
                         self.async_handle_w100_action(action, device_name)
                     )
                 except Exception as err:
-                    _LOGGER.error("Error handling W100 action: %s", err)
+                    _LOGGER.error("Error handling W100 action message: %s", err)
             
             # Subscribe to action topic
             await mqtt.async_subscribe(self.hass, action_topic, handle_w100_action, 0)
             self._mqtt_subscriptions.append(action_topic)
+            _LOGGER.debug("Subscribed to W100 action topic: %s", action_topic)
             
             # Set up state listener
             state_topic = MQTT_W100_STATE_TOPIC.format(device_name)
             
             @callback
-            def handle_w100_state(msg):
+            def handle_w100_state(msg: ReceiveMessage) -> None:
                 """Handle W100 state messages."""
                 try:
+                    if not msg.payload:
+                        return
+                        
                     payload = json.loads(msg.payload)
                     _LOGGER.debug("Received W100 state: %s from device %s", payload, device_name)
                     
-                    # Update device state
-                    self._device_states[device_name] = {
-                        **self._device_states.get(device_name, {}),
-                        **payload,
-                        "last_seen": datetime.now(),
+                    # Update device state with validation
+                    if device_name not in self._device_states:
+                        self._device_states[device_name] = {}
+                    
+                    # Only update with valid state data
+                    valid_keys = ["temperature", "humidity", "battery", "linkquality", "voltage"]
+                    filtered_payload = {
+                        key: value for key, value in payload.items() 
+                        if key in valid_keys and value is not None
                     }
                     
-                    # Trigger coordinator update
-                    self.async_set_updated_data(self.data)
+                    if filtered_payload:
+                        self._device_states[device_name].update({
+                            **filtered_payload,
+                            "last_seen": datetime.now(),
+                        })
+                        
+                        # Trigger coordinator update
+                        self.async_set_updated_data(self.data)
                     
                 except json.JSONDecodeError as err:
-                    _LOGGER.warning("Invalid JSON in W100 state message: %s", err)
+                    _LOGGER.warning("Invalid JSON in W100 state message from %s: %s", device_name, err)
                 except Exception as err:
-                    _LOGGER.error("Error handling W100 state: %s", err)
+                    _LOGGER.error("Error handling W100 state message: %s", err)
             
             # Subscribe to state topic
             await mqtt.async_subscribe(self.hass, state_topic, handle_w100_state, 0)
             self._mqtt_subscriptions.append(state_topic)
+            _LOGGER.debug("Subscribed to W100 state topic: %s", state_topic)
             
-            _LOGGER.info("Set up MQTT listeners for W100 device: %s", device_name)
+            _LOGGER.info("Successfully set up MQTT listeners for W100 device: %s", device_name)
             
         except Exception as err:
-            _LOGGER.error("Failed to set up MQTT listeners: %s", err)
+            _LOGGER.error("Failed to set up MQTT listeners for W100 device: %s", err)
+            # Don't raise the exception to prevent integration setup failure
+            # MQTT issues shouldn't prevent the integration from loading
 
     async def _async_initialize_device_states(self) -> None:
         """Initialize device states for tracking."""
@@ -821,18 +852,29 @@ class W100Coordinator(DataUpdateCoordinator):
             _LOGGER.error("Failed to update device states: %s", err)
 
     async def async_handle_w100_action(self, action: str, device_name: str) -> None:
-        """Handle W100 button actions."""
+        """Handle W100 button actions with debouncing and error recovery."""
         try:
-            # Debounce rapid actions
+            # Enhanced debouncing with per-action tracking
             now = datetime.now()
-            last_action_time = self._last_action_time.get(device_name)
-            if last_action_time and (now - last_action_time).total_seconds() < 0.5:
-                _LOGGER.debug("Debouncing rapid W100 action from %s", device_name)
+            debounce_key = f"{device_name}_{action}"
+            last_action_time = self._last_action_time.get(debounce_key)
+            
+            # Different debounce times for different actions
+            debounce_time = 0.5  # Default debounce
+            if action == W100_ACTION_TOGGLE:
+                debounce_time = 1.0  # Longer debounce for toggle to prevent accidental double-toggles
+            
+            if last_action_time and (now - last_action_time).total_seconds() < debounce_time:
+                _LOGGER.debug("Debouncing rapid W100 action %s from %s (%.2fs since last)", 
+                             action, device_name, (now - last_action_time).total_seconds())
                 return
             
-            self._last_action_time[device_name] = now
+            self._last_action_time[debounce_key] = now
             
             # Update device state
+            if device_name not in self._device_states:
+                await self._async_initialize_device_states()
+            
             if device_name in self._device_states:
                 self._device_states[device_name].update({
                     "last_action": action,
@@ -850,63 +892,91 @@ class W100Coordinator(DataUpdateCoordinator):
             
             climate_state = self.hass.states.get(climate_entity_id)
             if not climate_state:
-                _LOGGER.warning("Climate entity %s not found", climate_entity_id)
+                _LOGGER.warning("Climate entity %s not found for W100 device %s", climate_entity_id, device_name)
                 return
+            
+            if climate_state.state == STATE_UNAVAILABLE:
+                _LOGGER.warning("Climate entity %s is unavailable, cannot process W100 action %s", 
+                               climate_entity_id, action)
+                return
+            
+            _LOGGER.info("Processing W100 action %s from device %s for climate entity %s", 
+                        action, device_name, climate_entity_id)
             
             # Handle different actions
             if action == W100_ACTION_TOGGLE:
-                await self._async_handle_toggle_action(climate_entity_id, climate_state)
+                await self._async_handle_toggle_action(climate_entity_id, climate_state, device_name)
             elif action == W100_ACTION_PLUS:
                 await self._async_handle_plus_action(climate_entity_id, climate_state, device_name)
             elif action == W100_ACTION_MINUS:
                 await self._async_handle_minus_action(climate_entity_id, climate_state, device_name)
             else:
-                _LOGGER.debug("Unknown W100 action: %s", action)
+                _LOGGER.warning("Unknown W100 action received: %s from device %s", action, device_name)
+                return
             
-            # Schedule display sync after action
+            # Schedule display sync after action with delay to allow state to settle
+            self.hass.async_create_task(self._async_delayed_display_sync(device_name))
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle W100 action %s from device %s: %s", action, device_name, err)
+    
+    async def _async_delayed_display_sync(self, device_name: str) -> None:
+        """Sync W100 display after a delay to allow state changes to settle."""
+        try:
             await asyncio.sleep(DISPLAY_UPDATE_DELAY_SECONDS)
             await self._async_sync_w100_display(device_name)
-            
         except Exception as err:
-            _LOGGER.error("Failed to handle W100 action %s: %s", action, err)
+            _LOGGER.error("Failed to sync W100 display for %s: %s", device_name, err)
 
-    async def _async_handle_toggle_action(self, climate_entity_id: str, climate_state) -> None:
-        """Handle W100 toggle action (double press)."""
+    async def _async_handle_toggle_action(self, climate_entity_id: str, climate_state, device_name: str) -> None:
+        """Handle W100 toggle action (double press) - toggles between heat and off modes."""
         try:
             current_mode = climate_state.state
+            target_mode = "heat" if current_mode == "off" else "off"
             
-            if current_mode == "off":
-                # Turn on heat mode
-                await self.hass.services.async_call(
-                    "climate",
-                    "set_hvac_mode",
-                    {"entity_id": climate_entity_id, "hvac_mode": "heat"},
-                    blocking=True,
-                )
-                _LOGGER.debug("Toggled climate %s to heat mode", climate_entity_id)
-            else:
-                # Turn off
-                await self.hass.services.async_call(
-                    "climate",
-                    "set_hvac_mode",
-                    {"entity_id": climate_entity_id, "hvac_mode": "off"},
-                    blocking=True,
-                )
-                _LOGGER.debug("Toggled climate %s to off mode", climate_entity_id)
+            _LOGGER.info("W100 %s toggle: %s -> %s", device_name, current_mode, target_mode)
+            
+            # Check if target mode is supported
+            supported_modes = climate_state.attributes.get("hvac_modes", [])
+            if target_mode not in supported_modes:
+                _LOGGER.warning("Climate entity %s does not support mode %s (supported: %s)", 
+                               climate_entity_id, target_mode, supported_modes)
+                return
+            
+            # Execute mode change
+            await self.hass.services.async_call(
+                "climate",
+                "set_hvac_mode",
+                {"entity_id": climate_entity_id, "hvac_mode": target_mode},
+                blocking=True,
+            )
+            
+            _LOGGER.info("Successfully toggled climate %s from %s to %s mode via W100 %s", 
+                        climate_entity_id, current_mode, target_mode, device_name)
             
         except Exception as err:
-            _LOGGER.error("Failed to handle toggle action: %s", err)
+            _LOGGER.error("Failed to handle toggle action for %s: %s", climate_entity_id, err)
 
     async def _async_handle_plus_action(self, climate_entity_id: str, climate_state, device_name: str) -> None:
-        """Handle W100 plus action."""
+        """Handle W100 plus action - increases temperature in heat mode or fan speed in fan mode."""
         try:
             current_mode = climate_state.state
             
             if current_mode == "heat":
-                # Increase temperature
-                current_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
+                # Increase temperature by 0.5°C (W100 compatible increment)
+                current_temp = climate_state.attributes.get("temperature")
+                if current_temp is None:
+                    current_temp = DEFAULT_TARGET_TEMP
+                    _LOGGER.warning("No current temperature found for %s, using default %s", 
+                                   climate_entity_id, DEFAULT_TARGET_TEMP)
+                
                 max_temp = climate_state.attributes.get("max_temp", DEFAULT_MAX_TEMP)
-                new_temp = min(current_temp + 0.5, max_temp)
+                new_temp = min(float(current_temp) + 0.5, float(max_temp))
+                
+                if new_temp == current_temp:
+                    _LOGGER.info("W100 %s plus: temperature already at maximum (%s°C)", 
+                                device_name, current_temp)
+                    return
                 
                 await self.hass.services.async_call(
                     "climate",
@@ -914,38 +984,80 @@ class W100Coordinator(DataUpdateCoordinator):
                     {"entity_id": climate_entity_id, "temperature": new_temp},
                     blocking=True,
                 )
-                _LOGGER.debug("Increased temperature to %s for %s", new_temp, climate_entity_id)
+                _LOGGER.info("W100 %s plus: increased temperature from %s°C to %s°C for %s", 
+                            device_name, current_temp, new_temp, climate_entity_id)
                 
             elif current_mode == "fan":
                 # Increase fan speed (if supported)
                 current_fan_speed = climate_state.attributes.get("fan_mode", "1")
+                fan_modes = climate_state.attributes.get("fan_modes", [])
+                
+                if not fan_modes:
+                    _LOGGER.debug("Climate entity %s does not support fan modes", climate_entity_id)
+                    return
+                
                 try:
+                    # Try numeric fan speed adjustment
                     fan_speed_num = int(current_fan_speed)
                     new_fan_speed = min(fan_speed_num + 1, 9)
+                    new_fan_speed_str = str(new_fan_speed)
                     
-                    await self.hass.services.async_call(
-                        "climate",
-                        "set_fan_mode",
-                        {"entity_id": climate_entity_id, "fan_mode": str(new_fan_speed)},
-                        blocking=True,
-                    )
-                    _LOGGER.debug("Increased fan speed to %s for %s", new_fan_speed, climate_entity_id)
+                    if new_fan_speed_str in fan_modes:
+                        await self.hass.services.async_call(
+                            "climate",
+                            "set_fan_mode",
+                            {"entity_id": climate_entity_id, "fan_mode": new_fan_speed_str},
+                            blocking=True,
+                        )
+                        _LOGGER.info("W100 %s plus: increased fan speed from %s to %s for %s", 
+                                    device_name, current_fan_speed, new_fan_speed_str, climate_entity_id)
+                    else:
+                        _LOGGER.debug("Fan speed %s not supported by %s (available: %s)", 
+                                     new_fan_speed_str, climate_entity_id, fan_modes)
+                        
                 except (ValueError, TypeError):
-                    _LOGGER.debug("Fan speed adjustment not supported for %s", climate_entity_id)
+                    # Try to find next fan mode in list
+                    try:
+                        current_index = fan_modes.index(current_fan_speed)
+                        if current_index < len(fan_modes) - 1:
+                            new_fan_mode = fan_modes[current_index + 1]
+                            await self.hass.services.async_call(
+                                "climate",
+                                "set_fan_mode",
+                                {"entity_id": climate_entity_id, "fan_mode": new_fan_mode},
+                                blocking=True,
+                            )
+                            _LOGGER.info("W100 %s plus: increased fan mode from %s to %s for %s", 
+                                        device_name, current_fan_speed, new_fan_mode, climate_entity_id)
+                    except (ValueError, IndexError):
+                        _LOGGER.debug("Cannot increase fan speed for %s (current: %s, available: %s)", 
+                                     climate_entity_id, current_fan_speed, fan_modes)
+            else:
+                _LOGGER.debug("W100 %s plus action not applicable in mode %s", device_name, current_mode)
             
         except Exception as err:
-            _LOGGER.error("Failed to handle plus action: %s", err)
+            _LOGGER.error("Failed to handle plus action for %s: %s", climate_entity_id, err)
 
     async def _async_handle_minus_action(self, climate_entity_id: str, climate_state, device_name: str) -> None:
-        """Handle W100 minus action."""
+        """Handle W100 minus action - decreases temperature in heat mode or fan speed in fan mode."""
         try:
             current_mode = climate_state.state
             
             if current_mode == "heat":
-                # Decrease temperature
-                current_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
+                # Decrease temperature by 0.5°C (W100 compatible increment)
+                current_temp = climate_state.attributes.get("temperature")
+                if current_temp is None:
+                    current_temp = DEFAULT_TARGET_TEMP
+                    _LOGGER.warning("No current temperature found for %s, using default %s", 
+                                   climate_entity_id, DEFAULT_TARGET_TEMP)
+                
                 min_temp = climate_state.attributes.get("min_temp", DEFAULT_MIN_TEMP)
-                new_temp = max(current_temp - 0.5, min_temp)
+                new_temp = max(float(current_temp) - 0.5, float(min_temp))
+                
+                if new_temp == current_temp:
+                    _LOGGER.info("W100 %s minus: temperature already at minimum (%s°C)", 
+                                device_name, current_temp)
+                    return
                 
                 await self.hass.services.async_call(
                     "climate",
@@ -953,27 +1065,59 @@ class W100Coordinator(DataUpdateCoordinator):
                     {"entity_id": climate_entity_id, "temperature": new_temp},
                     blocking=True,
                 )
-                _LOGGER.debug("Decreased temperature to %s for %s", new_temp, climate_entity_id)
+                _LOGGER.info("W100 %s minus: decreased temperature from %s°C to %s°C for %s", 
+                            device_name, current_temp, new_temp, climate_entity_id)
                 
             elif current_mode == "fan":
                 # Decrease fan speed (if supported)
                 current_fan_speed = climate_state.attributes.get("fan_mode", "1")
+                fan_modes = climate_state.attributes.get("fan_modes", [])
+                
+                if not fan_modes:
+                    _LOGGER.debug("Climate entity %s does not support fan modes", climate_entity_id)
+                    return
+                
                 try:
+                    # Try numeric fan speed adjustment
                     fan_speed_num = int(current_fan_speed)
                     new_fan_speed = max(fan_speed_num - 1, 1)
+                    new_fan_speed_str = str(new_fan_speed)
                     
-                    await self.hass.services.async_call(
-                        "climate",
-                        "set_fan_mode",
-                        {"entity_id": climate_entity_id, "fan_mode": str(new_fan_speed)},
-                        blocking=True,
-                    )
-                    _LOGGER.debug("Decreased fan speed to %s for %s", new_fan_speed, climate_entity_id)
+                    if new_fan_speed_str in fan_modes:
+                        await self.hass.services.async_call(
+                            "climate",
+                            "set_fan_mode",
+                            {"entity_id": climate_entity_id, "fan_mode": new_fan_speed_str},
+                            blocking=True,
+                        )
+                        _LOGGER.info("W100 %s minus: decreased fan speed from %s to %s for %s", 
+                                    device_name, current_fan_speed, new_fan_speed_str, climate_entity_id)
+                    else:
+                        _LOGGER.debug("Fan speed %s not supported by %s (available: %s)", 
+                                     new_fan_speed_str, climate_entity_id, fan_modes)
+                        
                 except (ValueError, TypeError):
-                    _LOGGER.debug("Fan speed adjustment not supported for %s", climate_entity_id)
+                    # Try to find previous fan mode in list
+                    try:
+                        current_index = fan_modes.index(current_fan_speed)
+                        if current_index > 0:
+                            new_fan_mode = fan_modes[current_index - 1]
+                            await self.hass.services.async_call(
+                                "climate",
+                                "set_fan_mode",
+                                {"entity_id": climate_entity_id, "fan_mode": new_fan_mode},
+                                blocking=True,
+                            )
+                            _LOGGER.info("W100 %s minus: decreased fan mode from %s to %s for %s", 
+                                        device_name, current_fan_speed, new_fan_mode, climate_entity_id)
+                    except (ValueError, IndexError):
+                        _LOGGER.debug("Cannot decrease fan speed for %s (current: %s, available: %s)", 
+                                     climate_entity_id, current_fan_speed, fan_modes)
+            else:
+                _LOGGER.debug("W100 %s minus action not applicable in mode %s", device_name, current_mode)
             
         except Exception as err:
-            _LOGGER.error("Failed to handle minus action: %s", err)
+            _LOGGER.error("Failed to handle minus action for %s: %s", climate_entity_id, err)
 
     async def _async_sync_all_displays(self) -> None:
         """Sync all W100 displays with current states."""
@@ -987,6 +1131,7 @@ class W100Coordinator(DataUpdateCoordinator):
         """Sync W100 display with current climate state."""
         try:
             if device_name not in self._device_states:
+                _LOGGER.debug("Device %s not in device states, skipping display sync", device_name)
                 return
             
             device_state = self._device_states[device_name]
@@ -997,10 +1142,18 @@ class W100Coordinator(DataUpdateCoordinator):
                 climate_entity_id = self._created_thermostats[0]
             
             if not climate_entity_id:
+                _LOGGER.debug("No climate entity configured for device %s, skipping display sync", device_name)
                 return
             
             climate_state = self.hass.states.get(climate_entity_id)
             if not climate_state or climate_state.state == STATE_UNAVAILABLE:
+                _LOGGER.debug("Climate entity %s unavailable for device %s, skipping display sync", 
+                             climate_entity_id, device_name)
+                return
+            
+            # Check if MQTT is available
+            if not self.hass.services.has_service("mqtt", "publish"):
+                _LOGGER.debug("MQTT not available, skipping display sync for %s", device_name)
                 return
             
             # Prepare display update payload
@@ -1010,31 +1163,56 @@ class W100Coordinator(DataUpdateCoordinator):
             if current_mode == "heat":
                 # Show temperature in heat mode
                 target_temp = climate_state.attributes.get("temperature", DEFAULT_TARGET_TEMP)
-                display_payload["temperature"] = target_temp
+                display_payload["temperature"] = float(target_temp)
                 device_state["display_mode"] = "temperature"
+                _LOGGER.debug("W100 %s display: showing temperature %s°C (heat mode)", 
+                             device_name, target_temp)
                 
             elif current_mode == "off":
                 # Show fan speed in off mode
                 fan_speed = device_state.get("fan_speed", int(self.config.get(CONF_IDLE_FAN_SPEED, DEFAULT_IDLE_FAN_SPEED)))
-                display_payload["fan_speed"] = fan_speed
+                display_payload["fan_speed"] = int(fan_speed)
                 device_state["display_mode"] = "fan_speed"
+                _LOGGER.debug("W100 %s display: showing fan speed %s (off mode)", 
+                             device_name, fan_speed)
+                
+            elif current_mode == "fan":
+                # Show fan speed in fan mode
+                current_fan_speed = climate_state.attributes.get("fan_mode", "1")
+                try:
+                    fan_speed_num = int(current_fan_speed)
+                    display_payload["fan_speed"] = fan_speed_num
+                    device_state["display_mode"] = "fan_speed"
+                    _LOGGER.debug("W100 %s display: showing fan speed %s (fan mode)", 
+                                 device_name, fan_speed_num)
+                except (ValueError, TypeError):
+                    _LOGGER.debug("Cannot parse fan speed %s for display sync", current_fan_speed)
             
             # Add humidity if available
             humidity = device_state.get("humidity")
             if humidity is not None:
-                display_payload["humidity"] = humidity
+                try:
+                    display_payload["humidity"] = float(humidity)
+                    _LOGGER.debug("W100 %s display: including humidity %s%%", device_name, humidity)
+                except (ValueError, TypeError):
+                    _LOGGER.debug("Invalid humidity value for display: %s", humidity)
             
             # Send display update via MQTT
             if display_payload:
                 set_topic = MQTT_W100_SET_TOPIC.format(device_name)
+                payload_json = json.dumps(display_payload)
+                
                 await mqtt.async_publish(
                     self.hass,
                     set_topic,
-                    json.dumps(display_payload),
+                    payload_json,
                     0,
                     False
                 )
-                _LOGGER.debug("Synced W100 display for %s: %s", device_name, display_payload)
+                _LOGGER.debug("Synced W100 display for %s via %s: %s", 
+                             device_name, set_topic, display_payload)
+            else:
+                _LOGGER.debug("No display data to sync for W100 %s", device_name)
             
         except Exception as err:
             _LOGGER.error("Failed to sync W100 display for %s: %s", device_name, err)
