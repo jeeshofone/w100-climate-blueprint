@@ -110,6 +110,11 @@ class W100BaseSwitch(SwitchEntity, RestoreEntity):
         # Add coordinator listener
         self._coordinator.async_add_listener(self.async_write_ha_state)
         
+        # Register this switch entity with the coordinator for proper registry integration
+        await self._coordinator.async_register_switch_entity(
+            self._device_name, self.entity_id, self._switch_type
+        )
+        
         # Apply initial state to coordinator
         await self._async_apply_state()
     

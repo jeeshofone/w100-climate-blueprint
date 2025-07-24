@@ -417,6 +417,138 @@ class W100Coordinator(DataUpdateCoordinator):
                 entity_id, device_name, err
             )
 
+    async def async_register_sensor_entity(self, device_name: str, entity_id: str, sensor_type: str) -> None:
+        """Register sensor entity with proper unique ID and logical device linking."""
+        try:
+            entity_registry = er.async_get(self.hass)
+            device_registry = dr.async_get(self.hass)
+            
+            # Find or create the logical device entry for integration entities
+            device_entry = device_registry.async_get_device(
+                identifiers={(DOMAIN, f"w100_control_{device_name}")}
+            )
+            
+            if not device_entry:
+                # Create logical device if it doesn't exist
+                device_id = await self._async_create_logical_device(device_name)
+                device_entry = device_registry.async_get(device_id)
+            
+            # Generate proper unique ID for the sensor entity
+            unique_id = f"{DOMAIN}_{device_name}_{sensor_type}"
+            
+            # Determine entity category based on sensor type
+            entity_category = "diagnostic" if sensor_type in ["connection", "diagnostic"] else None
+            
+            # Determine icon based on sensor type
+            icon_map = {
+                "humidity": "mdi:water-percent",
+                "status": "mdi:information-outline", 
+                "connection": "mdi:wifi",
+                "diagnostic": "mdi:bug-outline",
+            }
+            
+            # Register or update the sensor entity
+            entity_entry = entity_registry.async_get_or_create(
+                domain="sensor",
+                platform=DOMAIN,
+                unique_id=unique_id,
+                suggested_object_id=f"w100_{device_name}_{sensor_type}",
+                config_entry=self.entry,
+                device_id=device_entry.id if device_entry else None,
+                original_name=f"W100 {device_name.replace('_', ' ').title()} {sensor_type.replace('_', ' ').title()}",
+                entity_category=entity_category,
+                has_entity_name=True,
+                original_icon=icon_map.get(sensor_type, "mdi:information"),
+            )
+            
+            # Enable entity customization
+            if entity_entry:
+                entity_registry.async_update_entity(
+                    entity_id,
+                    # Link to the registered entity
+                    new_entity_id=entity_entry.entity_id,
+                    # Allow customization
+                    disabled_by=None,
+                    hidden_by=None,
+                )
+            
+            _LOGGER.debug(
+                "Registered sensor entity %s (%s) for W100 control %s with unique ID %s",
+                entity_id, sensor_type, device_name, unique_id
+            )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to register sensor entity %s (%s) for device %s: %s",
+                entity_id, sensor_type, device_name, err
+            )
+
+    async def async_register_switch_entity(self, device_name: str, entity_id: str, switch_type: str) -> None:
+        """Register switch entity with proper unique ID and logical device linking."""
+        try:
+            entity_registry = er.async_get(self.hass)
+            device_registry = dr.async_get(self.hass)
+            
+            # Find or create the logical device entry for integration entities
+            device_entry = device_registry.async_get_device(
+                identifiers={(DOMAIN, f"w100_control_{device_name}")}
+            )
+            
+            if not device_entry:
+                # Create logical device if it doesn't exist
+                device_id = await self._async_create_logical_device(device_name)
+                device_entry = device_registry.async_get(device_id)
+            
+            # Generate proper unique ID for the switch entity
+            unique_id = f"{DOMAIN}_{device_name}_{switch_type}"
+            
+            # Determine entity category - most switches are config except beep control
+            entity_category = "config" if switch_type != "beep_control" else None
+            
+            # Determine icon based on switch type
+            icon_map = {
+                "beep_control": "mdi:volume-high",
+                "stuck_heater_workaround": "mdi:wrench",
+                "display_sync": "mdi:monitor-dashboard",
+                "debounce": "mdi:timer-outline",
+            }
+            
+            # Register or update the switch entity
+            entity_entry = entity_registry.async_get_or_create(
+                domain="switch",
+                platform=DOMAIN,
+                unique_id=unique_id,
+                suggested_object_id=f"w100_{device_name}_{switch_type}",
+                config_entry=self.entry,
+                device_id=device_entry.id if device_entry else None,
+                original_name=f"W100 {device_name.replace('_', ' ').title()} {switch_type.replace('_', ' ').title()}",
+                entity_category=entity_category,
+                has_entity_name=True,
+                original_icon=icon_map.get(switch_type, "mdi:toggle-switch"),
+            )
+            
+            # Enable entity customization
+            if entity_entry:
+                entity_registry.async_update_entity(
+                    entity_id,
+                    # Link to the registered entity
+                    new_entity_id=entity_entry.entity_id,
+                    # Allow customization
+                    disabled_by=None,
+                    hidden_by=None,
+                )
+            
+            _LOGGER.debug(
+                "Registered switch entity %s (%s) for W100 control %s with unique ID %s",
+                entity_id, switch_type, device_name, unique_id
+            )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to register switch entity %s (%s) for device %s: %s",
+                entity_id, switch_type, device_name, err
+            )
+
     async def _async_cleanup_orphaned_thermostats(self) -> None:
         """Clean up orphaned thermostats that exist in registry but not in our tracking."""
         try:

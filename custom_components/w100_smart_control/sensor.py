@@ -102,6 +102,11 @@ class W100BaseSensor(SensorEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
         self._coordinator.async_add_listener(self.async_write_ha_state)
+        
+        # Register this sensor entity with the coordinator for proper registry integration
+        await self._coordinator.async_register_sensor_entity(
+            self._device_name, self.entity_id, self._sensor_type
+        )
     
     async def async_will_remove_from_hass(self) -> None:
         """When entity will be removed from hass."""
