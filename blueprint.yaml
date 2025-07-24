@@ -372,7 +372,7 @@ action:
                         sequence:
                           - service: number.set_value
                             target:
-                              entity_id: !input temperature_number_entity
+                              entity_id: "{{ philips_temp_entity }}"
                             data:
                               value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
                   - service: climate.set_swing_mode
@@ -720,7 +720,7 @@ action:
                             sequence:
                               - service: fan.set_preset_mode
                                 target:
-                                  entity_id: !input fan_entity
+                                  entity_id: "{{ philips_fan_entity }}"
                                 data:
                                   preset_mode: "{{ new_preset }}"
                       - service: select.select_option
@@ -833,7 +833,7 @@ action:
                             sequence:
                               - service: fan.set_preset_mode
                                 target:
-                                  entity_id: !input fan_entity
+                                  entity_id: "{{ philips_fan_entity }}"
                                 data:
                                   preset_mode: "{{ new_preset }}"
                       - service: select.select_option
