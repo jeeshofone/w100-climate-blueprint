@@ -1090,16 +1090,200 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
+        self._coordinator = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Manage the options."""
+        # Get coordinator to check for created thermostats
+        coordinator_data = self.hass.data.get(DOMAIN, {})
+        self._coordinator = coordinator_data.get(self.config_entry.entry_id)
+        
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            # Handle thermostat management actions
+            action = user_input.get("action")
+            
+            if action == "manage_thermostats" and self._coordinator:
+                return await self.async_step_manage_thermostats()
+            elif action == "update_config":
+                return await self.async_step_update_config()
+            else:
+                return self.async_create_entry(title="", data=user_input)
 
-        # For now, just return empty options - will be expanded in later tasks
+        # Build options based on current configuration
+        options_schema = {}
+        
+        # Show thermostat management if we have created thermostats
+        if self._coordinator and self._coordinator.created_thermostats:
+            options_schema[vol.Optional("action")] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="manage_thermostats", 
+                            label="Manage Created Thermostats"
+                        ),
+                        selector.SelectOptionDict(
+                            value="update_config", 
+                            label="Update Integration Configuration"
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+        else:
+            options_schema[vol.Optional("action")] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(
+                            value="update_config", 
+                            label="Update Integration Configuration"
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema(options_schema),
+            description_placeholders={
+                "created_thermostats": str(len(self._coordinator.created_thermostats) if self._coordinator else 0),
+                "device_name": self.config_entry.data.get(CONF_W100_DEVICE_NAME, "Unknown"),
+            }
         )
+
+    async def async_step_manage_thermostats(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage created thermostats."""
+        if not self._coordinator:
+            return self.async_abort(reason="coordinator_not_found")
+
+        errors = {}
+        
+        if user_input is not None:
+            action = user_input.get("thermostat_action")
+            thermostat_id = user_input.get("thermostat_id")
+            
+            try:
+                if action == "remove" and thermostat_id:
+                    await self._coordinator.async_remove_generic_thermostat(thermostat_id)
+                    return self.async_create_entry(
+                        title="", 
+                        data={"thermostat_removed": thermostat_id}
+                    )
+                elif action == "remove_all":
+                    await self._coordinator.async_remove_all_thermostats()
+                    return self.async_create_entry(
+                        title="", 
+                        data={"all_thermostats_removed": True}
+                    )
+            except Exception as err:
+                _LOGGER.error("Error managing thermostats: %s", err)
+                errors["base"] = "thermostat_management_failed"
+
+        # Get current thermostats
+        thermostats = self._coordinator.created_thermostats
+        if not thermostats:
+            return self.async_abort(reason="no_thermostats_found")
+
+        thermostat_options = []
+        for entity_id in thermostats:
+            # Get entity state for display
+            state = self.hass.states.get(entity_id)
+            if state:
+                label = f"{entity_id} (Current: {state.state})"
+            else:
+                label = f"{entity_id} (Unavailable)"
+            
+            thermostat_options.append(
+                selector.SelectOptionDict(value=entity_id, label=label)
+            )
+
+        return self.async_show_form(
+            step_id="manage_thermostats",
+            data_schema=vol.Schema({
+                vol.Required("thermostat_action"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="remove", label="Remove Selected Thermostat"),
+                            selector.SelectOptionDict(value="remove_all", label="Remove All Thermostats"),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional("thermostat_id"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=thermostat_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }),
+            errors=errors,
+        )
+
+    async def async_step_update_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Update integration configuration."""
+        if user_input is not None:
+            try:
+                # Update the coordinator configuration if available
+                if self._coordinator:
+                    await self._coordinator.async_update_config(user_input)
+                else:
+                    # Fallback: update config entry directly
+                    new_data = {**self.config_entry.data, **user_input}
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry, data=new_data
+                    )
+                
+                return self.async_create_entry(title="", data=user_input)
+            except Exception as err:
+                _LOGGER.error("Failed to update configuration: %s", err)
+                return self.async_show_form(
+                    step_id="update_config",
+                    errors={"base": "config_update_failed"},
+                    data_schema=self._get_update_config_schema(),
+                )
+
+        return self.async_show_form(
+            step_id="update_config",
+            data_schema=self._get_update_config_schema(),
+        )
+
+    def _get_update_config_schema(self) -> vol.Schema:
+        """Get the schema for updating configuration."""
+        current_config = self.config_entry.data
+        
+        return vol.Schema({
+            vol.Optional(
+                CONF_HEATING_TEMPERATURE, 
+                default=current_config.get(CONF_HEATING_TEMPERATURE, DEFAULT_HEATING_TEMPERATURE)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=15, max=35, step=0.5, mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(
+                CONF_IDLE_TEMPERATURE, 
+                default=current_config.get(CONF_IDLE_TEMPERATURE, DEFAULT_IDLE_TEMPERATURE)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=15, max=35, step=0.5, mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(
+                CONF_BEEP_MODE, 
+                default=current_config.get(CONF_BEEP_MODE, DEFAULT_BEEP_MODE)
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=mode, label=mode)
+                        for mode in BEEP_MODES
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        })

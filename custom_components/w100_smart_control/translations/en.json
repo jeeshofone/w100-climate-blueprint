@@ -73,6 +73,9 @@
       "temperature_control_not_supported": "Selected climate entity does not support temperature control, which is required for W100 control.",
       "current_temperature_not_available": "Selected climate entity does not provide current temperature readings, which are required for W100 display updates.",
       "invalid_temperature_range": "Selected climate entity has an invalid temperature range configuration.",
+      "thermostat_management_failed": "Failed to manage thermostats. Please try again.",
+      "config_update_failed": "Failed to update configuration. Please check your settings and try again.",
+      "coordinator_not_found": "Integration coordinator not found. Please reload the integration.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
@@ -83,8 +86,36 @@
     "step": {
       "init": {
         "title": "W100 Smart Control Options",
-        "description": "Configure options for your W100 Smart Control integration."
+        "description": "Configure options for your W100 Smart Control integration. You have {created_thermostats} created thermostat(s) for device '{device_name}'.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "manage_thermostats": {
+        "title": "Manage Created Thermostats",
+        "description": "Manage the thermostats created by this integration.",
+        "data": {
+          "thermostat_action": "Action",
+          "thermostat_id": "Thermostat to Manage"
+        }
+      },
+      "update_config": {
+        "title": "Update Configuration",
+        "description": "Update the configuration settings for your W100 integration.",
+        "data": {
+          "heating_temperature": "Heating Temperature",
+          "idle_temperature": "Idle Temperature",
+          "beep_mode": "Beep Mode"
+        }
       }
+    },
+    "error": {
+      "thermostat_management_failed": "Failed to manage thermostats. Please try again.",
+      "config_update_failed": "Failed to update configuration. Please check your settings and try again."
+    },
+    "abort": {
+      "coordinator_not_found": "Integration coordinator not found. Please reload the integration.",
+      "no_thermostats_found": "No thermostats found to manage."
     }
   }
 }
