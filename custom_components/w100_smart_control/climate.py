@@ -1,7 +1,9 @@
 """Climate platform for W100 Smart Control integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -13,15 +15,35 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     UnitOfTemperature,
+    STATE_ON,
+    STATE_OFF,
 )
 
-from .const import DOMAIN, CONF_W100_DEVICE_NAME, CONF_EXISTING_CLIMATE_ENTITY
+from .const import (
+    DOMAIN, 
+    CONF_W100_DEVICE_NAME, 
+    CONF_EXISTING_CLIMATE_ENTITY,
+    CONF_BEEP_MODE,
+    CONF_HEATING_TEMPERATURE,
+    CONF_IDLE_TEMPERATURE,
+    DEFAULT_BEEP_MODE,
+    DEFAULT_HEATING_TEMPERATURE,
+    DEFAULT_IDLE_TEMPERATURE,
+)
 from .coordinator import W100Coordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Advanced feature constants
+STUCK_HEATER_CHECK_INTERVAL = timedelta(minutes=5)
+STUCK_HEATER_TEMP_THRESHOLD = 0.5  # °C - if temp doesn't change by this much, heater might be stuck
+STUCK_HEATER_TIME_THRESHOLD = timedelta(minutes=15)  # Time to wait before considering heater stuck
+DEBOUNCE_DELAY = 2.0  # seconds - delay between rapid button presses
+STARTUP_INIT_DELAY = 5.0  # seconds - delay before initializing displays on startup
 
 
 async def async_setup_entry(
@@ -80,6 +102,20 @@ class W100ClimateEntity(ClimateEntity):
             model="W100",
             sw_version="1.0.0",
         )
+        
+        # Advanced feature state tracking
+        self._last_button_press = None
+        self._debounce_task = None
+        self._stuck_heater_tracker = None
+        self._last_temp_check = None
+        self._last_temp_value = None
+        self._heater_start_time = None
+        self._startup_initialized = False
+        
+        # Configuration from entry
+        self._beep_mode = config_entry.data.get(CONF_BEEP_MODE, DEFAULT_BEEP_MODE)
+        self._heating_temperature = config_entry.data.get(CONF_HEATING_TEMPERATURE, DEFAULT_HEATING_TEMPERATURE)
+        self._idle_temperature = config_entry.data.get(CONF_IDLE_TEMPERATURE, DEFAULT_IDLE_TEMPERATURE)
 
     @property
     def available(self) -> bool:
@@ -278,6 +314,9 @@ class W100ClimateEntity(ClimateEntity):
         
         # Set up MQTT listeners for W100 button presses
         await self._setup_w100_listeners()
+        
+        # Set up advanced features
+        await self._setup_advanced_features()
 
     async def _setup_w100_listeners(self) -> None:
         """Set up MQTT listeners for W100 button presses."""
@@ -301,175 +340,24 @@ class W100ClimateEntity(ClimateEntity):
             )
 
     async def async_handle_w100_button(self, action: str) -> None:
-        """Handle W100 button press actions with enhanced logic."""
-        try:
-            _LOGGER.debug(
-                "Handling W100 button action %s for device %s",
-                action,
-                self._device_name,
-            )
-            
-            current_state = self.target_climate_state
-            if not current_state:
-                _LOGGER.warning(
-                    "Target climate entity %s not available for W100 button action",
-                    self._target_climate_entity,
-                )
-                return
-            
-            current_hvac_mode = current_state.state
-            current_temp = current_state.attributes.get("temperature", 21)
-            
-            # Handle different button actions based on current mode
-            if action == "double":
-                await self._handle_toggle_button(current_hvac_mode)
-            elif action == "plus":
-                await self._handle_plus_button(current_hvac_mode, current_temp, current_state)
-            elif action == "minus":
-                await self._handle_minus_button(current_hvac_mode, current_temp, current_state)
-            else:
-                _LOGGER.warning(
-                    "Unknown W100 button action %s for device %s",
-                    action,
-                    self._device_name,
-                )
-                return
-            
-            _LOGGER.debug(
-                "Completed W100 button action %s for device %s",
-                action,
-                self._device_name,
-            )
-            
-        except Exception as err:
-            _LOGGER.error(
-                "Failed to handle W100 button action %s for %s: %s",
-                action,
-                self._device_name,
-                err,
-            )
+        """Handle W100 button press actions with enhanced logic and debouncing."""
+        # Use debounced handler for all button presses
+        await self._debounced_button_handler(action)
 
     async def _handle_toggle_button(self, current_hvac_mode: str) -> None:
         """Handle W100 toggle button (double press) - switches between heat and off modes."""
-        try:
-            # Toggle between heat and off modes
-            if current_hvac_mode == HVACMode.HEAT:
-                target_mode = HVACMode.OFF
-            else:
-                target_mode = HVACMode.HEAT
-            
-            # Check if target mode is supported
-            supported_modes = self.hvac_modes
-            if target_mode not in supported_modes:
-                _LOGGER.warning(
-                    "Target HVAC mode %s not supported by %s (supported: %s)",
-                    target_mode,
-                    self._target_climate_entity,
-                    supported_modes,
-                )
-                return
-            
-            await self.async_set_hvac_mode(target_mode)
-            
-            _LOGGER.info(
-                "W100 %s toggle: switched from %s to %s mode",
-                self._device_name,
-                current_hvac_mode,
-                target_mode,
-            )
-            
-        except Exception as err:
-            _LOGGER.error(
-                "Failed to handle toggle button for %s: %s",
-                self._device_name,
-                err,
-            )
+        # Redirect to advanced version
+        await self._handle_toggle_button_advanced(current_hvac_mode)
 
     async def _handle_plus_button(self, current_hvac_mode: str, current_temp: float, current_state) -> None:
         """Handle W100 plus button - increases temperature in heat mode or fan speed in other modes."""
-        try:
-            if current_hvac_mode == HVACMode.HEAT:
-                # Increase temperature by the step amount
-                step = self.target_temperature_step
-                new_temp = min(current_temp + step, self.max_temp)
-                
-                if new_temp == current_temp:
-                    _LOGGER.info(
-                        "W100 %s plus: temperature already at maximum (%s°C)",
-                        self._device_name,
-                        current_temp,
-                    )
-                    return
-                
-                await self.async_set_temperature(temperature=new_temp)
-                
-                _LOGGER.info(
-                    "W100 %s plus: increased temperature from %s°C to %s°C",
-                    self._device_name,
-                    current_temp,
-                    new_temp,
-                )
-                
-            elif current_hvac_mode in [HVACMode.FAN_ONLY, HVACMode.COOL]:
-                # Try to increase fan speed if supported
-                await self._adjust_fan_speed(current_state, increase=True)
-                
-            else:
-                _LOGGER.debug(
-                    "W100 %s plus button not applicable in mode %s",
-                    self._device_name,
-                    current_hvac_mode,
-                )
-            
-        except Exception as err:
-            _LOGGER.error(
-                "Failed to handle plus button for %s: %s",
-                self._device_name,
-                err,
-            )
+        # Redirect to advanced version
+        await self._handle_plus_button_advanced(current_hvac_mode, current_temp, current_state)
 
     async def _handle_minus_button(self, current_hvac_mode: str, current_temp: float, current_state) -> None:
         """Handle W100 minus button - decreases temperature in heat mode or fan speed in other modes."""
-        try:
-            if current_hvac_mode == HVACMode.HEAT:
-                # Decrease temperature by the step amount
-                step = self.target_temperature_step
-                new_temp = max(current_temp - step, self.min_temp)
-                
-                if new_temp == current_temp:
-                    _LOGGER.info(
-                        "W100 %s minus: temperature already at minimum (%s°C)",
-                        self._device_name,
-                        current_temp,
-                    )
-                    return
-                
-                await self.async_set_temperature(temperature=new_temp)
-                
-                _LOGGER.info(
-                    "W100 %s minus: decreased temperature from %s°C to %s°C",
-                    self._device_name,
-                    current_temp,
-                    new_temp,
-                )
-                
-            elif current_hvac_mode in [HVACMode.FAN_ONLY, HVACMode.COOL]:
-                # Try to decrease fan speed if supported
-                await self._adjust_fan_speed(current_state, increase=False)
-                
-            else:
-                _LOGGER.debug(
-                    "W100 %s minus button not applicable in mode %s",
-                    self._device_name,
-                    current_hvac_mode,
-                )
-            
-        except Exception as err:
-            _LOGGER.error(
-                "Failed to handle minus button for %s: %s",
-                self._device_name,
-                err,
-            )
+        # Redirect to advanced version
+        await self._handle_minus_button_advanced(current_hvac_mode, current_temp, current_state)
 
     async def _adjust_fan_speed(self, current_state, increase: bool = True) -> None:
         """Adjust fan speed if the climate entity supports it."""
@@ -576,6 +464,342 @@ class W100ClimateEntity(ClimateEntity):
                 self._target_climate_entity,
                 err,
             )
+
+    async def _setup_advanced_features(self) -> None:
+        """Set up advanced blueprint features."""
+        try:
+            # Set up stuck heater monitoring
+            self.async_on_remove(
+                async_track_time_interval(
+                    self.hass,
+                    self._check_stuck_heater,
+                    STUCK_HEATER_CHECK_INTERVAL
+                )
+            )
+            
+            # Schedule startup initialization
+            self.hass.async_create_task(self._startup_initialization())
+            
+            _LOGGER.debug("Advanced features set up for W100 device %s", self._device_name)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to set up advanced features for %s: %s", self._device_name, err)
+
+    async def _startup_initialization(self) -> None:
+        """Initialize W100 display values on startup."""
+        try:
+            # Wait for startup delay to allow entities to stabilize
+            await asyncio.sleep(STARTUP_INIT_DELAY)
+            
+            # Initialize W100 display with current climate state
+            await self._coordinator.async_sync_w100_display(self._device_name)
+            
+            # Send beep if configured for startup
+            if self._beep_mode in ["Enable Beep", "On-Mode Change"]:
+                await self._send_beep_command("startup")
+            
+            self._startup_initialized = True
+            
+            _LOGGER.info("W100 %s startup initialization completed", self._device_name)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to initialize W100 %s on startup: %s", self._device_name, err)
+
+    async def _check_stuck_heater(self, now: datetime) -> None:
+        """Check if heater is stuck and implement workaround."""
+        try:
+            target_state = self.target_climate_state
+            if not target_state or target_state.state != HVACMode.HEAT:
+                # Reset tracking if not in heat mode
+                self._last_temp_check = None
+                self._last_temp_value = None
+                self._heater_start_time = None
+                return
+            
+            current_temp = target_state.attributes.get("current_temperature")
+            target_temp = target_state.attributes.get("temperature")
+            
+            if current_temp is None or target_temp is None:
+                return
+            
+            # Track when heating started
+            if self._heater_start_time is None:
+                self._heater_start_time = now
+                self._last_temp_check = now
+                self._last_temp_value = current_temp
+                return
+            
+            # Check if enough time has passed for stuck heater detection
+            if now - self._heater_start_time < STUCK_HEATER_TIME_THRESHOLD:
+                return
+            
+            # Check if temperature has changed significantly
+            if self._last_temp_value is not None:
+                temp_change = abs(current_temp - self._last_temp_value)
+                time_since_check = now - self._last_temp_check
+                
+                # If temperature hasn't changed much in the check interval, heater might be stuck
+                if (temp_change < STUCK_HEATER_TEMP_THRESHOLD and 
+                    time_since_check >= STUCK_HEATER_CHECK_INTERVAL and
+                    current_temp < target_temp - 1.0):  # Still significantly below target
+                    
+                    _LOGGER.warning(
+                        "Stuck heater detected for %s: temp change %.1f°C in %s minutes, implementing workaround",
+                        self._device_name,
+                        temp_change,
+                        time_since_check.total_seconds() / 60
+                    )
+                    
+                    await self._implement_stuck_heater_workaround()
+            
+            # Update tracking values
+            self._last_temp_check = now
+            self._last_temp_value = current_temp
+            
+        except Exception as err:
+            _LOGGER.error("Error checking stuck heater for %s: %s", self._device_name, err)
+
+    async def _implement_stuck_heater_workaround(self) -> None:
+        """Implement stuck heater workaround by cycling the heater."""
+        try:
+            # Get the heater entity from generic thermostat config if available
+            heater_entity = None
+            
+            # Try to find heater entity from thermostat config
+            thermostat_config = self._config_entry.data.get("generic_thermostat_config", {})
+            if thermostat_config:
+                heater_entity = thermostat_config.get("heater_switch")
+            
+            if not heater_entity:
+                _LOGGER.warning("Cannot implement stuck heater workaround: heater entity not found")
+                return
+            
+            # Check if heater entity exists
+            heater_state = self.hass.states.get(heater_entity)
+            if not heater_state:
+                _LOGGER.warning("Heater entity %s not found for stuck heater workaround", heater_entity)
+                return
+            
+            _LOGGER.info("Implementing stuck heater workaround for %s: cycling heater %s", 
+                        self._device_name, heater_entity)
+            
+            # Turn off heater for 30 seconds, then let thermostat control it again
+            await self.hass.services.async_call(
+                "switch", "turn_off",
+                {"entity_id": heater_entity},
+                blocking=True
+            )
+            
+            # Wait 30 seconds
+            await asyncio.sleep(30)
+            
+            # The generic thermostat will automatically turn it back on if needed
+            _LOGGER.info("Stuck heater workaround completed for %s", self._device_name)
+            
+            # Reset tracking to avoid immediate re-triggering
+            self._heater_start_time = datetime.now()
+            self._last_temp_check = None
+            self._last_temp_value = None
+            
+        except Exception as err:
+            _LOGGER.error("Failed to implement stuck heater workaround for %s: %s", self._device_name, err)
+
+    async def _debounced_button_handler(self, action: str) -> None:
+        """Handle button press with debouncing to prevent rapid successive presses."""
+        try:
+            current_time = datetime.now()
+            
+            # Check if this is too soon after the last button press
+            if (self._last_button_press and 
+                (current_time - self._last_button_press).total_seconds() < DEBOUNCE_DELAY):
+                _LOGGER.debug(
+                    "Debouncing W100 button press %s for %s (too soon after last press)",
+                    action, self._device_name
+                )
+                return
+            
+            # Cancel any pending debounce task
+            if self._debounce_task and not self._debounce_task.done():
+                self._debounce_task.cancel()
+            
+            # Update last button press time
+            self._last_button_press = current_time
+            
+            # Execute the button action
+            await self._execute_button_action(action)
+            
+        except Exception as err:
+            _LOGGER.error("Error in debounced button handler for %s: %s", self._device_name, err)
+
+    async def _execute_button_action(self, action: str) -> None:
+        """Execute the actual button action logic."""
+        try:
+            _LOGGER.debug("Executing W100 button action %s for device %s", action, self._device_name)
+            
+            current_state = self.target_climate_state
+            if not current_state:
+                _LOGGER.warning(
+                    "Target climate entity %s not available for W100 button action",
+                    self._target_climate_entity,
+                )
+                return
+            
+            current_hvac_mode = current_state.state
+            current_temp = current_state.attributes.get("temperature", 21)
+            
+            # Handle different button actions based on current mode
+            if action == "double":
+                await self._handle_toggle_button_advanced(current_hvac_mode)
+            elif action == "plus":
+                await self._handle_plus_button_advanced(current_hvac_mode, current_temp, current_state)
+            elif action == "minus":
+                await self._handle_minus_button_advanced(current_hvac_mode, current_temp, current_state)
+            else:
+                _LOGGER.warning("Unknown W100 button action %s for device %s", action, self._device_name)
+                return
+            
+            # Send beep feedback if configured
+            if self._beep_mode in ["Enable Beep", "On-Mode Change"]:
+                await self._send_beep_command(action)
+            
+            _LOGGER.debug("Completed W100 button action %s for device %s", action, self._device_name)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to execute W100 button action %s for %s: %s", action, self._device_name, err)
+
+    async def _handle_toggle_button_advanced(self, current_hvac_mode: str) -> None:
+        """Handle W100 toggle button with advanced features."""
+        try:
+            # Toggle between heat and off modes
+            if current_hvac_mode == HVACMode.HEAT:
+                target_mode = HVACMode.OFF
+            else:
+                target_mode = HVACMode.HEAT
+            
+            # Check if target mode is supported
+            supported_modes = self.hvac_modes
+            if target_mode not in supported_modes:
+                _LOGGER.warning(
+                    "Target HVAC mode %s not supported by %s (supported: %s)",
+                    target_mode, self._target_climate_entity, supported_modes,
+                )
+                return
+            
+            await self.async_set_hvac_mode(target_mode)
+            
+            # Reset stuck heater tracking when mode changes
+            if target_mode == HVACMode.HEAT:
+                self._heater_start_time = datetime.now()
+            else:
+                self._heater_start_time = None
+            
+            self._last_temp_check = None
+            self._last_temp_value = None
+            
+            _LOGGER.info("W100 %s toggle: switched from %s to %s mode", 
+                        self._device_name, current_hvac_mode, target_mode)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle advanced toggle button for %s: %s", self._device_name, err)
+
+    async def _handle_plus_button_advanced(self, current_hvac_mode: str, current_temp: float, current_state) -> None:
+        """Handle W100 plus button with advanced features."""
+        try:
+            if current_hvac_mode == HVACMode.HEAT:
+                # Increase temperature by the step amount
+                step = self.target_temperature_step
+                new_temp = min(current_temp + step, self.max_temp)
+                
+                if new_temp == current_temp:
+                    _LOGGER.info("W100 %s plus: temperature already at maximum (%s°C)", 
+                                self._device_name, current_temp)
+                    return
+                
+                await self.async_set_temperature(temperature=new_temp)
+                
+                _LOGGER.info("W100 %s plus: increased temperature from %s°C to %s°C",
+                            self._device_name, current_temp, new_temp)
+                
+            elif current_hvac_mode in [HVACMode.FAN_ONLY, HVACMode.COOL]:
+                # Try to increase fan speed if supported
+                await self._adjust_fan_speed(current_state, increase=True)
+                
+            else:
+                _LOGGER.debug("W100 %s plus button not applicable in mode %s", 
+                             self._device_name, current_hvac_mode)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle advanced plus button for %s: %s", self._device_name, err)
+
+    async def _handle_minus_button_advanced(self, current_hvac_mode: str, current_temp: float, current_state) -> None:
+        """Handle W100 minus button with advanced features."""
+        try:
+            if current_hvac_mode == HVACMode.HEAT:
+                # Decrease temperature by the step amount
+                step = self.target_temperature_step
+                new_temp = max(current_temp - step, self.min_temp)
+                
+                if new_temp == current_temp:
+                    _LOGGER.info("W100 %s minus: temperature already at minimum (%s°C)",
+                                self._device_name, current_temp)
+                    return
+                
+                await self.async_set_temperature(temperature=new_temp)
+                
+                _LOGGER.info("W100 %s minus: decreased temperature from %s°C to %s°C",
+                            self._device_name, current_temp, new_temp)
+                
+            elif current_hvac_mode in [HVACMode.FAN_ONLY, HVACMode.COOL]:
+                # Try to decrease fan speed if supported
+                await self._adjust_fan_speed(current_state, increase=False)
+                
+            else:
+                _LOGGER.debug("W100 %s minus button not applicable in mode %s",
+                             self._device_name, current_hvac_mode)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle advanced minus button for %s: %s", self._device_name, err)
+
+    async def _send_beep_command(self, action: str) -> None:
+        """Send beep command to W100 device based on beep mode configuration."""
+        try:
+            if self._beep_mode == "Disable Beep":
+                return
+            
+            # Determine if beep should be sent based on mode and action
+            should_beep = False
+            
+            if self._beep_mode == "Enable Beep":
+                should_beep = True
+            elif self._beep_mode == "On-Mode Change":
+                # Only beep on mode changes and temperature changes
+                should_beep = action in ["double", "plus", "minus", "startup"]
+            
+            if not should_beep:
+                return
+            
+            # Send beep command via MQTT
+            beep_topic = f"zigbee2mqtt/{self._device_name}/set"
+            beep_payload = {"beep": True}
+            
+            await self.hass.services.async_call(
+                "mqtt", "publish",
+                {
+                    "topic": beep_topic,
+                    "payload": str(beep_payload).replace("'", '"'),
+                },
+                blocking=False
+            )
+            
+            _LOGGER.debug("Sent beep command to W100 %s for action %s", self._device_name, action)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to send beep command to W100 %s: %s", self._device_name, err)
+
+    async def async_handle_w100_button(self, action: str) -> None:
+        """Handle W100 button press actions with enhanced logic and debouncing."""
+        # Use debounced handler for all button presses
+        await self._debounced_button_handler(action)
 
     async def async_handle_w100_action(self, action: str) -> None:
         """Handle W100 button press actions (legacy method - redirects to new method)."""
