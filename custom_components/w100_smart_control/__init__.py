@@ -75,6 +75,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         # Clean up storage
         try:
             await coordinator._storage.async_remove()
+            await coordinator._device_storage.async_remove()
             _LOGGER.debug("Removed storage for deleted integration entry %s", entry.entry_id)
         except Exception as err:
             _LOGGER.warning("Failed to remove storage during entry removal: %s", err)
