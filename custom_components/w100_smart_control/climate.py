@@ -94,13 +94,16 @@ class W100ClimateEntity(ClimateEntity):
         self._attr_unique_id = f"{DOMAIN}_{device_name}_climate"
         self._attr_name = f"W100 {device_name.replace('_', ' ').title()}"
         
-        # Set up device info
+        # Set up device info for logical device (not physical W100 device)
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_name)},
-            name=f"W100 {device_name.replace('_', ' ').title()}",
-            manufacturer="Aqara",
-            model="W100",
+            identifiers={(DOMAIN, f"w100_control_{device_name}")},
+            name=f"W100 Control for {device_name.replace('_', ' ').title()}",
+            manufacturer="W100 Smart Control Integration",
+            model="Climate Controller",
             sw_version="1.0.0",
+            hw_version="1.0",
+            configuration_url=f"homeassistant://config/integrations/integration/{DOMAIN}",
+            suggested_area="Living Room",
         )
         
         # Advanced feature state tracking
@@ -206,18 +209,31 @@ class W100ClimateEntity(ClimateEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional state attributes."""
+        """Return additional state attributes with registry integration info."""
         attributes = {}
         
         # Add W100-specific attributes
         attributes["w100_device_name"] = self._device_name
         attributes["target_climate_entity"] = self._target_climate_entity
+        attributes["integration_version"] = "1.0.0"
+        attributes["device_manufacturer"] = "Aqara"
+        attributes["device_model"] = "W100 Smart Control"
+        
+        # Add configuration attributes for customization
+        attributes["beep_mode"] = self._beep_mode
+        attributes["heating_temperature"] = self._heating_temperature
+        attributes["idle_temperature"] = self._idle_temperature
         
         # Add device state from coordinator if available
         device_state = self._coordinator.data.get("device_states", {}).get(self._device_name, {})
         if device_state:
             attributes["w100_last_action"] = device_state.get("last_action")
             attributes["w100_display_mode"] = device_state.get("display_mode")
+            attributes["w100_connection_status"] = device_state.get("connection_status", "connected")
+        
+        # Add registry information for troubleshooting
+        attributes["unique_id"] = self._attr_unique_id
+        attributes["device_registry_id"] = f"{DOMAIN}_{self._device_name}"
         
         return attributes
 
@@ -319,15 +335,16 @@ class W100ClimateEntity(ClimateEntity):
         await self._setup_advanced_features()
 
     async def _setup_w100_listeners(self) -> None:
-        """Set up MQTT listeners for W100 button presses."""
+        """Set up MQTT listeners for W100 button presses and register with proper unique ID."""
         try:
-            # Register this climate entity with the coordinator for W100 events
-            await self._coordinator.async_register_w100_climate_entity(
+            # Register this proxy climate entity with the coordinator for W100 events
+            # This also handles logical device registry integration
+            await self._coordinator.async_register_proxy_climate_entity(
                 self._device_name, self.entity_id
             )
             
             _LOGGER.debug(
-                "Set up W100 listeners for device %s, entity %s",
+                "Set up W100 listeners for device %s, entity %s with proper registry integration",
                 self._device_name,
                 self.entity_id,
             )

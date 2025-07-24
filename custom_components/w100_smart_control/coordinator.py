@@ -105,6 +105,8 @@ class W100Coordinator(DataUpdateCoordinator):
         await self._async_load_device_data()
         await self._async_load_thermostat_data()
         
+        # Note: W100 devices are managed by Zigbee2MQTT - we only create logical devices for our entities
+        
         # Clean up any orphaned thermostats
         await self._async_cleanup_orphaned_thermostats()
         
@@ -336,6 +338,84 @@ class W100Coordinator(DataUpdateCoordinator):
             _LOGGER.debug("Saved thermostat data to storage")
         except Exception as err:
             _LOGGER.error("Failed to save thermostat data: %s", err)
+
+    async def _async_create_logical_device(self, device_name: str) -> str:
+        """Create a logical device entry for organizing integration entities."""
+        try:
+            device_registry = dr.async_get(self.hass)
+            
+            # Create logical device entry for integration entities (not physical W100 device)
+            device_entry = device_registry.async_get_or_create(
+                config_entry_id=self.entry.entry_id,
+                identifiers={(DOMAIN, f"w100_control_{device_name}")},
+                name=f"W100 Control for {device_name.replace('_', ' ').title()}",
+                manufacturer="W100 Smart Control Integration",
+                model="Climate Controller",
+                sw_version="1.0.0",
+                configuration_url=f"homeassistant://config/integrations/integration/{DOMAIN}",
+            )
+            
+            _LOGGER.debug("Created logical device for W100 control %s with ID %s", device_name, device_entry.id)
+            return device_entry.id
+            
+        except Exception as err:
+            _LOGGER.error("Failed to create logical device for %s: %s", device_name, err)
+            raise
+
+    async def async_register_proxy_climate_entity(self, device_name: str, entity_id: str) -> None:
+        """Register proxy climate entity with proper unique ID and logical device linking."""
+        try:
+            entity_registry = er.async_get(self.hass)
+            device_registry = dr.async_get(self.hass)
+            
+            # Find or create the logical device entry for integration entities
+            device_entry = device_registry.async_get_device(
+                identifiers={(DOMAIN, f"w100_control_{device_name}")}
+            )
+            
+            if not device_entry:
+                # Create logical device if it doesn't exist
+                device_id = await self._async_create_logical_device(device_name)
+                device_entry = device_registry.async_get(device_id)
+            
+            # Generate proper unique ID for the proxy climate entity
+            unique_id = f"{DOMAIN}_{device_name}_proxy_climate"
+            
+            # Register or update the proxy climate entity
+            entity_entry = entity_registry.async_get_or_create(
+                domain="climate",
+                platform=DOMAIN,
+                unique_id=unique_id,
+                suggested_object_id=f"w100_{device_name}_control",
+                config_entry=self.entry,
+                device_id=device_entry.id if device_entry else None,
+                original_name=f"W100 Control for {device_name.replace('_', ' ').title()}",
+                entity_category=None,
+                has_entity_name=True,
+                original_icon="mdi:remote",
+            )
+            
+            # Enable entity customization
+            if entity_entry:
+                entity_registry.async_update_entity(
+                    entity_id,
+                    # Link to the registered entity
+                    new_entity_id=entity_entry.entity_id,
+                    # Allow customization
+                    disabled_by=None,
+                    hidden_by=None,
+                )
+            
+            _LOGGER.debug(
+                "Registered proxy climate entity %s for W100 control %s with unique ID %s",
+                entity_id, device_name, unique_id
+            )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to register proxy climate entity %s for device %s: %s",
+                entity_id, device_name, err
+            )
 
     async def _async_cleanup_orphaned_thermostats(self) -> None:
         """Clean up orphaned thermostats that exist in registry but not in our tracking."""
@@ -592,8 +672,8 @@ class W100Coordinator(DataUpdateCoordinator):
         using Home Assistant's generic_thermostat platform.
         """
         try:
-            # Create device entry for the thermostat
-            device_id = await self._async_create_thermostat_device(entity_id, config)
+            # Create logical device entry for the thermostat
+            device_id = await self._async_create_thermostat_logical_device(entity_id, config)
             
             # Get the generic_thermostat platform
             platform = None
@@ -619,27 +699,28 @@ class W100Coordinator(DataUpdateCoordinator):
             _LOGGER.error("Failed to create thermostat entity %s: %s", entity_id, err)
             raise
 
-    async def _async_create_thermostat_device(self, entity_id: str, config: dict[str, Any]) -> str:
-        """Create device entry for the thermostat."""
+    async def _async_create_thermostat_logical_device(self, entity_id: str, config: dict[str, Any]) -> str:
+        """Create logical device entry for the thermostat with proper registry integration."""
         try:
             device_registry = dr.async_get(self.hass)
-            w100_device_name = self.config.get("w100_device_name", "w100")
+            w100_device_name = config.get("device_name", self.config.get("w100_device_name", "w100"))
             
-            # Create device entry
+            # Create logical device entry for thermostat (not physical device)
             device_entry = device_registry.async_get_or_create(
                 config_entry_id=self.entry.entry_id,
-                identifiers={(DOMAIN, f"thermostat_{entity_id}")},
-                name=config.get("name", f"W100 {w100_device_name} Thermostat"),
-                manufacturer="W100 Smart Control",
-                model="Generic Thermostat",
+                identifiers={(DOMAIN, f"w100_thermostat_{entity_id}")},
+                name=config.get("name", f"W100 Thermostat for {w100_device_name.replace('_', ' ').title()}"),
+                manufacturer="W100 Smart Control Integration",
+                model="Generic Thermostat Controller",
                 sw_version="1.0.0",
+                configuration_url=f"homeassistant://config/integrations/integration/{DOMAIN}",
             )
             
-            _LOGGER.debug("Created device entry %s for thermostat %s", device_entry.id, entity_id)
+            _LOGGER.debug("Created thermostat logical device %s for %s", device_entry.id, entity_id)
             return device_entry.id
             
         except Exception as err:
-            _LOGGER.error("Failed to create device entry for thermostat %s: %s", entity_id, err)
+            _LOGGER.error("Failed to create thermostat logical device for %s: %s", entity_id, err)
             raise
 
     async def _async_setup_thermostat_config(self, entity_id: str, config: dict[str, Any], device_id: str) -> None:
@@ -676,12 +757,12 @@ class W100Coordinator(DataUpdateCoordinator):
         await self._async_register_thermostat_entity(entity_id, config_with_device)
 
     async def _async_register_thermostat_entity(self, entity_id: str, config: dict[str, Any]) -> None:
-        """Register thermostat entity in the entity registry."""
+        """Register thermostat entity in the entity registry with proper device linking."""
         try:
             entity_registry = er.async_get(self.hass)
             
-            # Create entity registry entry
-            entity_registry.async_get_or_create(
+            # Create entity registry entry with comprehensive information
+            entity_entry = entity_registry.async_get_or_create(
                 domain="climate",
                 platform=DOMAIN,
                 unique_id=config.get("unique_id", f"{DOMAIN}_{entity_id}"),
@@ -690,9 +771,22 @@ class W100Coordinator(DataUpdateCoordinator):
                 device_id=config.get("device_id"),
                 original_name=config.get("name"),
                 entity_category=None,
+                # Enable entity customization
+                has_entity_name=True,
+                # Add icon for better UI
+                original_icon="mdi:thermostat",
             )
             
-            _LOGGER.debug("Registered thermostat entity %s in registry", entity_id)
+            # Enable entity customization support
+            if entity_entry:
+                entity_registry.async_update_entity(
+                    entity_id,
+                    # Allow users to customize the entity
+                    disabled_by=None,
+                    hidden_by=None,
+                )
+            
+            _LOGGER.debug("Registered thermostat entity %s in registry with device linking", entity_id)
             
         except Exception as err:
             _LOGGER.error("Failed to register thermostat entity %s: %s", entity_id, err)
@@ -868,7 +962,7 @@ class W100Coordinator(DataUpdateCoordinator):
             # Create new thermostat with updated configuration
             device_id = config.get("device_id")
             if not device_id:
-                device_id = await self._async_create_thermostat_device(entity_id, config)
+                device_id = await self._async_create_thermostat_logical_device(entity_id, config)
                 config["device_id"] = device_id
             
             await self._async_setup_thermostat_entity(entity_id, config, device_id)

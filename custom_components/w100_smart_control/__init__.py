@@ -28,10 +28,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up W100 Smart Control from a config entry."""
+    """Set up W100 Smart Control from a config entry with proper registry integration."""
     coordinator = W100Coordinator(hass, entry)
     
-    # Set up coordinator (load persisted data, cleanup orphaned entities)
+    # Set up coordinator (load persisted data, cleanup orphaned entities, register devices)
     await coordinator.async_setup()
     
     await coordinator.async_config_entry_first_refresh()
@@ -43,7 +43,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.add_update_listener(async_update_entry)
     )
     
+    # Forward setup to platforms with proper device registry integration
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    
+    _LOGGER.info(
+        "W100 Smart Control integration setup complete with device registry integration for entry %s",
+        entry.entry_id
+    )
     
     return True
 
