@@ -1236,6 +1236,9 @@ class W100Coordinator(DataUpdateCoordinator):
                 _LOGGER.warning("Unknown W100 action received: %s from device %s", action, device_name)
                 return
             
+            # Also route action to registered W100 climate entities for this device
+            await self._async_route_action_to_w100_entities(action, device_name)
+            
             # Schedule display sync after action with delay to allow state to settle
             self.hass.async_create_task(self._async_delayed_display_sync(device_name))
             
@@ -2251,3 +2254,72 @@ class W100Coordinator(DataUpdateCoordinator):
             
         except Exception as err:
             _LOGGER.error("Failed to handle config changes: %s", err)
+
+    async def async_register_w100_climate_entity(self, device_name: str, entity_id: str) -> None:
+        """Register a W100 climate entity for button press handling."""
+        try:
+            # Initialize device climate entities tracking if not exists
+            if not hasattr(self, '_device_climate_entities'):
+                self._device_climate_entities = {}
+            
+            if device_name not in self._device_climate_entities:
+                self._device_climate_entities[device_name] = []
+            
+            # Add entity to device tracking if not already present
+            if entity_id not in self._device_climate_entities[device_name]:
+                self._device_climate_entities[device_name].append(entity_id)
+                
+                _LOGGER.debug(
+                    "Registered W100 climate entity %s for device %s",
+                    entity_id,
+                    device_name,
+                )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to register W100 climate entity %s for device %s: %s",
+                entity_id,
+                device_name,
+                err,
+            )
+
+    async def _async_route_action_to_w100_entities(self, action: str, device_name: str) -> None:
+        """Route W100 action to registered W100 climate entities."""
+        try:
+            if not hasattr(self, '_device_climate_entities'):
+                return
+            
+            climate_entities = self._device_climate_entities.get(device_name, [])
+            if not climate_entities:
+                return
+            
+            # Route action to all registered W100 climate entities for this device
+            for entity_id in climate_entities:
+                try:
+                    # Get the entity from the entity registry
+                    entity = self.hass.data.get("entity_components", {}).get("climate")
+                    if entity:
+                        climate_entity = entity.get_entity(entity_id)
+                        if climate_entity and hasattr(climate_entity, 'async_handle_w100_action'):
+                            await climate_entity.async_handle_w100_action(action)
+                            _LOGGER.debug(
+                                "Routed W100 action %s to climate entity %s for device %s",
+                                action,
+                                entity_id,
+                                device_name,
+                            )
+                except Exception as err:
+                    _LOGGER.error(
+                        "Failed to route W100 action %s to entity %s: %s",
+                        action,
+                        entity_id,
+                        err,
+                    )
+            
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to route W100 action %s to entities for device %s: %s",
+                action,
+                device_name,
+                err,
+            )
