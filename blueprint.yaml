@@ -340,11 +340,17 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       temperature: !input heating_temperature
-                  - service: select.select_option
-                    target:
-                      entity_id: !input fan_warm_level_entity
-                    data:
-                      option: !input heating_warm_level
+                  # Only set warm level if entity is provided
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ warm_level_entity != '' }}"
+                        sequence:
+                          - service: select.select_option
+                            target:
+                              entity_id: "{{ warm_level_entity }}"
+                            data:
+                              option: !input heating_warm_level
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -371,8 +377,7 @@ action:
                             value_template: "{{ philips_temp_entity != '' }}"
                         sequence:
                           - service: number.set_value
-                            target:
-                              entity_id: "{{ philips_temp_entity }}"
+                            entity_id: "{{ philips_temp_entity }}"
                             data:
                               value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
                   - service: climate.set_swing_mode
@@ -384,18 +389,18 @@ action:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Enable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Enable Beep' }}"
                 sequence:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input fan_beep_switch
+                      entity_id: "{{ beep_switch }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Disable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input fan_beep_switch
+                      entity_id: "{{ beep_switch }}"
           # Force W100 display sync to show temperature
           - delay:
               milliseconds: 500
@@ -439,11 +444,17 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       temperature: !input idle_temperature
-                  - service: select.select_option
-                    target:
-                      entity_id: !input fan_warm_level_entity
-                    data:
-                      option: !input idle_warm_level
+                  # Only set warm level if entity is provided
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ warm_level_entity != '' }}"
+                        sequence:
+                          - service: select.select_option
+                            target:
+                              entity_id: "{{ warm_level_entity }}"
+                            data:
+                              option: !input idle_warm_level
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -473,18 +484,18 @@ action:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Enable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Enable Beep' }}"
                 sequence:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input fan_beep_switch
+                      entity_id: "{{ beep_switch }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Disable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input fan_beep_switch
+                      entity_id: "{{ beep_switch }}"
 
       # Smart Thermostat Idle/Off - Switch to Fan Only
       - conditions:
@@ -519,11 +530,17 @@ action:
                       fan_mode: !input idle_fan_speed
                   - delay:
                       milliseconds: 500
-                  - service: select.select_option
-                    target:
-                      entity_id: !input fan_warm_level_entity
-                    data:
-                      option: !input idle_warm_level
+                  # Only set warm level if entity is provided
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ warm_level_entity != '' }}"
+                        sequence:
+                          - service: select.select_option
+                            target:
+                              entity_id: "{{ warm_level_entity }}"
+                            data:
+                              option: !input idle_warm_level
                   - service: climate.set_temperature
                     target:
                       entity_id: !input fan_climate_entity
@@ -716,7 +733,7 @@ action:
                       - choose:
                           - conditions:
                               - condition: template
-                                value_template: "{{ philips_fan_entity != '' }}"
+                                value_template: "{{ philips_fan_entity != ''  }}"
                             sequence:
                               - service: fan.set_preset_mode
                                 target:
@@ -829,7 +846,7 @@ action:
                       - choose:
                           - conditions:
                               - condition: template
-                                value_template: "{{ philips_fan_entity != '' }}"
+                                value_template: "{{ philips_fan_entity != ''  }}"
                             sequence:
                               - service: fan.set_preset_mode
                                 target:
@@ -864,7 +881,7 @@ action:
               fan_speed: >
                 {% if device_type == 'kogan_bladeless' %}
                   {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
-                {% elif device_type == 'philips_heater' %}
+                {% elif device_type == 'philips_heater'  %}
                   {% set preset = state_attr(philips_fan_entity, 'preset_mode') | default('low') %}
                   {% set preset_to_number = {"low": 2, "medium": 5, "high": 7, "auto_plus": 9, "ventilation": 1} %}
                   {{ preset_to_number[preset] if preset in preset_to_number else 2 }}
@@ -970,7 +987,7 @@ action:
                   value: >
                     {% if device_type == 'kogan_bladeless' %}
                       {{ state_attr(fan_entity, 'fan_mode') | int(1) }}
-                    {% elif device_type == 'philips_heater' %}
+                    {% elif device_type == 'philips_heater'  %}
                       {% set preset = state_attr(philips_fan_entity, 'preset_mode') | default('low') %}
                       {% set preset_to_number = {"low": 2, "medium": 5, "high": 7, "auto_plus": 9, "ventilation": 1} %}
                       {{ preset_to_number[preset] if preset in preset_to_number else 2 }}
@@ -991,26 +1008,26 @@ action:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Enable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Enable Beep' }}"
                 sequence:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input fan_beep_switch
+                      entity_id: "{{ beep_switch }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'Disable Beep' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input fan_beep_switch
+                      entity_id: "{{ beep_switch }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'On-Mode Change' }}"
+                    value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'On-Mode Change' }}"
                 sequence:
                   # On-Mode Change - ensure beep is off initially
                   - service: switch.turn_off
                     target:
-                      entity_id: !input fan_beep_switch
+                      entity_id: "{{ beep_switch }}"
 
       # W100 Sync Humidity Display
       - conditions:
@@ -1072,28 +1089,28 @@ action:
           - condition: trigger
             id: smart_temp_change
           - condition: template
-            value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'On-Mode Change' }}"
+            value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'On-Mode Change' }}"
         sequence:
           - service: switch.turn_off
             target:
-              entity_id: !input fan_beep_switch
+              entity_id: "{{ beep_switch }}"
           - delay:
               milliseconds: 200
           - service: switch.turn_on
             target:
-              entity_id: !input fan_beep_switch
+              entity_id: "{{ beep_switch }}"
           - delay:
               milliseconds: 500
           - service: switch.turn_off
             target:
-              entity_id: !input fan_beep_switch
+              entity_id: "{{ beep_switch }}"
       
       # Smart Thermostat Mode Change - Beep (Kogan Only)
       - conditions:
           - condition: trigger
             id: smart_mode_change
           - condition: template
-            value_template: "{{ device_type == 'kogan_bladeless' and beep_mode == 'On-Mode Change' }}"
+            value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'On-Mode Change' }}"
           # Don't beep if this was triggered by the workaround
           - condition: template
             value_template: >
@@ -1102,14 +1119,14 @@ action:
         sequence:
           - service: switch.turn_off
             target:
-              entity_id: !input fan_beep_switch
+              entity_id: "{{ beep_switch }}"
           - delay:
               milliseconds: 200
           - service: switch.turn_on
             target:
-              entity_id: !input fan_beep_switch
+              entity_id: "{{ beep_switch }}"
           - delay:
               milliseconds: 500
           - service: switch.turn_off
             target:
-              entity_id: !input fan_beep_switch
+              entity_id: "{{ beep_switch }}"
