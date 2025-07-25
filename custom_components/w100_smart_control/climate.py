@@ -42,6 +42,7 @@ from .exceptions import (
     W100RecoverableError,
     W100ErrorCodes,
 )
+from .error_messages import W100ErrorMessages
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -303,7 +304,19 @@ class W100ClimateEntity(ClimateEntity):
                 self._target_climate_entity,
             )
             
-        except W100IntegrationError:
+        except W100IntegrationError as err:
+            # Log user-friendly error message
+            user_message = W100ErrorMessages.format_error_message(
+                err.error_code,
+                {"device_name": self._device_name, "entity_id": self._target_climate_entity}
+            )
+            _LOGGER.error("W100 Error: %s", user_message)
+            
+            # Log troubleshooting steps for user
+            steps = W100ErrorMessages.get_troubleshooting_steps(err.error_code)
+            if steps:
+                _LOGGER.info("Troubleshooting steps: %s", "; ".join(steps))
+            
             # Re-raise W100 specific errors
             raise
         except Exception as err:

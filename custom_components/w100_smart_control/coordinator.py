@@ -31,6 +31,7 @@ from .exceptions import (
     W100CriticalError,
     W100ErrorCodes,
 )
+from .error_messages import W100ErrorMessages, W100DiagnosticInfo
 
 # Generic thermostat domain constant
 GENERIC_THERMOSTAT_DOMAIN = "generic_thermostat"
@@ -784,9 +785,35 @@ class W100Coordinator(DataUpdateCoordinator):
             
             return entity_id
             
+        except W100IntegrationError as err:
+            # Log user-friendly error message
+            user_message = W100ErrorMessages.format_error_message(
+                err.error_code,
+                {"device_name": w100_device_name}
+            )
+            _LOGGER.error("W100 Thermostat Creation Error: %s", user_message)
+            
+            # Log troubleshooting steps
+            steps = W100ErrorMessages.get_troubleshooting_steps(err.error_code)
+            if steps:
+                _LOGGER.info("Troubleshooting steps: %s", "; ".join(steps))
+            
+            raise HomeAssistantError(user_message) from err
         except Exception as err:
-            _LOGGER.error("Failed to create generic thermostat: %s", err)
-            raise HomeAssistantError(f"Failed to create generic thermostat: {err}") from err
+            _LOGGER.error("Failed to create generic thermostat for device %s: %s", w100_device_name, err)
+            
+            # Create user-friendly error
+            error_message = W100ErrorMessages.format_error_message(
+                W100ErrorCodes.THERMOSTAT_CREATE_FAILED,
+                {"device_name": w100_device_name}
+            )
+            
+            # Log troubleshooting steps
+            steps = W100ErrorMessages.get_troubleshooting_steps(W100ErrorCodes.THERMOSTAT_CREATE_FAILED)
+            if steps:
+                _LOGGER.info("Troubleshooting steps: %s", "; ".join(steps))
+            
+            raise HomeAssistantError(error_message) from err
 
     async def async_create_device_thermostat(self, device_name: str, config: dict[str, Any]) -> str:
         """Create a generic thermostat entity for a specific W100 device.
@@ -2597,6 +2624,127 @@ class W100Coordinator(DataUpdateCoordinator):
             
             # Check if other configuration changed that affects thermostats
             await self._async_handle_config_changes(old_config, self.config)
+            
+        except Exception as err:
+            _LOGGER.error("Failed to handle config entry update: %s", err)
+
+    def get_user_friendly_error(self, error: Exception, context: dict[str, Any] | None = None) -> str:
+        """Get user-friendly error message for an exception."""
+        if isinstance(error, W100IntegrationError) and error.error_code:
+            return W100ErrorMessages.format_error_message(error.error_code, context)
+        
+        # Fallback for non-W100 errors
+        return f"An unexpected error occurred: {str(error)}"
+
+    def get_troubleshooting_steps(self, error: Exception) -> list[str]:
+        """Get troubleshooting steps for an error."""
+        if isinstance(error, W100IntegrationError) and error.error_code:
+            return W100ErrorMessages.get_troubleshooting_steps(error.error_code)
+        
+        # Default troubleshooting steps
+        return [
+            "1. Check the Home Assistant logs for more details",
+            "2. Try restarting the integration",
+            "3. Verify all dependencies are working properly",
+            "4. Contact support if the issue persists"
+        ]
+
+    def get_diagnostic_info(self, device_name: str | None = None) -> str:
+        """Get diagnostic information for troubleshooting."""
+        if device_name:
+            return W100DiagnosticInfo.format_diagnostic_report(self.hass, self, device_name)
+        
+        # Get info for primary device
+        primary_device = self.config.get(CONF_W100_DEVICE_NAME, "unknown")
+        return W100DiagnosticInfo.format_diagnostic_report(self.hass, self, primary_device)
+
+    async def async_validate_setup(self) -> dict[str, Any]:
+        """Validate the current setup and return status information."""
+        validation_result = {
+            "valid": True,
+            "warnings": [],
+            "errors": [],
+            "device_status": {},
+        }
+        
+        try:
+            # Check MQTT availability
+            if not self.hass.services.has_service("mqtt", "publish"):
+                validation_result["errors"].append({
+                    "code": W100ErrorCodes.MQTT_CONNECTION_FAILED,
+                    "message": W100ErrorMessages.format_error_message(W100ErrorCodes.MQTT_CONNECTION_FAILED),
+                    "guidance": W100ErrorMessages.get_troubleshooting_steps(W100ErrorCodes.MQTT_CONNECTION_FAILED)
+                })
+                validation_result["valid"] = False
+            
+            # Check each configured device
+            for device_name in self.list_devices():
+                device_status = {
+                    "available": False,
+                    "last_seen": None,
+                    "climate_entity": None,
+                    "thermostats": [],
+                    "issues": []
+                }
+                
+                # Check device availability
+                device_state = self._device_states.get(device_name, {})
+                if device_state:
+                    device_status["available"] = True
+                    device_status["last_seen"] = device_state.get("last_action_time")
+                else:
+                    device_status["issues"].append({
+                        "code": W100ErrorCodes.DEVICE_UNAVAILABLE,
+                        "message": W100ErrorMessages.format_error_message(
+                            W100ErrorCodes.DEVICE_UNAVAILABLE,
+                            {"device_name": device_name}
+                        )
+                    })
+                
+                # Check climate entity
+                device_config = self._device_configs.get(device_name, self.config)
+                climate_entity = device_config.get(CONF_EXISTING_CLIMATE_ENTITY)
+                if climate_entity:
+                    climate_state = self.hass.states.get(climate_entity)
+                    if climate_state:
+                        device_status["climate_entity"] = {
+                            "entity_id": climate_entity,
+                            "available": climate_state.state != "unavailable"
+                        }
+                    else:
+                        device_status["issues"].append({
+                            "code": W100ErrorCodes.ENTITY_NOT_FOUND,
+                            "message": W100ErrorMessages.format_error_message(
+                                W100ErrorCodes.ENTITY_NOT_FOUND,
+                                {"entity_id": climate_entity}
+                            )
+                        })
+                
+                # Check created thermostats
+                device_thermostats = self._device_thermostats.get(device_name, [])
+                for thermostat_id in device_thermostats:
+                    thermostat_state = self.hass.states.get(thermostat_id)
+                    device_status["thermostats"].append({
+                        "entity_id": thermostat_id,
+                        "available": bool(thermostat_state and thermostat_state.state != "unavailable")
+                    })
+                
+                validation_result["device_status"][device_name] = device_status
+                
+                # Add device issues to overall validation
+                if device_status["issues"]:
+                    validation_result["warnings"].extend(device_status["issues"])
+            
+            return validation_result
+            
+        except Exception as err:
+            validation_result["valid"] = False
+            validation_result["errors"].append({
+                "code": "VALIDATION_FAILED",
+                "message": f"Failed to validate setup: {err}",
+                "guidance": ["Check Home Assistant logs for details", "Try restarting the integration"]
+            })
+            return validation_result
             
             # Trigger data refresh
             await self.async_refresh()
