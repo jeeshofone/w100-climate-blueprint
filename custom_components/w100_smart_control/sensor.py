@@ -26,6 +26,13 @@ from .const import (
     CONF_BACKUP_HUMIDITY_SENSOR,
 )
 from .coordinator import W100Coordinator
+from .exceptions import (
+    W100IntegrationError,
+    W100DeviceError,
+    W100EntityError,
+    W100RecoverableError,
+    W100ErrorCodes,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,17 +43,25 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up W100 sensor entities from a config entry."""
-    coordinator: W100Coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    
-    device_name = config_entry.data.get(CONF_W100_DEVICE_NAME)
-    if not device_name:
-        _LOGGER.error("No W100 device name found in config entry")
-        return
-    
-    sensors = []
-    
-    # Create humidity sensor that mirrors W100 display values
-    sensors.append(W100HumiditySensor(coordinator, config_entry, device_name))
+    try:
+        coordinator: W100Coordinator = hass.data[DOMAIN][config_entry.entry_id]
+        
+        device_name = config_entry.data.get(CONF_W100_DEVICE_NAME)
+        if not device_name:
+            raise W100DeviceError(
+                "unknown",
+                "No W100 device name found in config entry",
+                W100ErrorCodes.DEVICE_NOT_FOUND
+            )
+        
+        sensors = []
+        
+        # Create humidity sensor that mirrors W100 display values
+        try:
+            sensors.append(W100HumiditySensor(coordinator, config_entry, device_name))
+        except Exception as err:
+            _LOGGER.error("Failed to create humidity sensor for %s: %s", device_name, err)
+            # Continue with other sensors
     
     # Create status sensor for integration mode and last action
     sensors.append(W100StatusSensor(coordinator, config_entry, device_name))

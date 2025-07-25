@@ -18,6 +18,13 @@ from .const import (
     DEFAULT_BEEP_MODE,
 )
 from .coordinator import W100Coordinator
+from .exceptions import (
+    W100IntegrationError,
+    W100DeviceError,
+    W100EntityError,
+    W100RecoverableError,
+    W100ErrorCodes,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,22 +35,32 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up W100 switch entities from a config entry."""
-    coordinator: W100Coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    
-    device_name = config_entry.data.get(CONF_W100_DEVICE_NAME)
-    if not device_name:
-        _LOGGER.error("No W100 device name found in config entry")
-        return
-    
-    switches = []
-    
-    # Create beep control switch
-    switches.append(W100BeepControlSwitch(coordinator, config_entry, device_name))
-    
-    # Create advanced feature switches
-    switches.append(W100StuckHeaterWorkaroundSwitch(coordinator, config_entry, device_name))
-    switches.append(W100DisplaySyncSwitch(coordinator, config_entry, device_name))
-    switches.append(W100DebounceSwitch(coordinator, config_entry, device_name))
+    try:
+        coordinator: W100Coordinator = hass.data[DOMAIN][config_entry.entry_id]
+        
+        device_name = config_entry.data.get(CONF_W100_DEVICE_NAME)
+        if not device_name:
+            raise W100DeviceError(
+                "unknown",
+                "No W100 device name found in config entry",
+                W100ErrorCodes.DEVICE_NOT_FOUND
+            )
+        
+        switches = []
+        
+        # Create beep control switch
+        try:
+            switches.append(W100BeepControlSwitch(coordinator, config_entry, device_name))
+        except Exception as err:
+            _LOGGER.error("Failed to create beep control switch for %s: %s", device_name, err)
+        
+        # Create advanced feature switches
+        try:
+            switches.append(W100StuckHeaterWorkaroundSwitch(coordinator, config_entry, device_name))
+            switches.append(W100DisplaySyncSwitch(coordinator, config_entry, device_name))
+            switches.append(W100DebounceSwitch(coordinator, config_entry, device_name))
+        except Exception as err:
+            _LOGGER.error("Failed to create advanced feature switches for %s: %s", device_name, err)
     
     async_add_entities(switches)
     _LOGGER.info(

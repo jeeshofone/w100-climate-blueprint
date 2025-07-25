@@ -35,6 +35,13 @@ from .const import (
     DEFAULT_IDLE_TEMPERATURE,
 )
 from .coordinator import W100Coordinator
+from .exceptions import (
+    W100IntegrationError,
+    W100DeviceError,
+    W100EntityError,
+    W100RecoverableError,
+    W100ErrorCodes,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -240,19 +247,39 @@ class W100ClimateEntity(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target HVAC mode."""
         try:
-            # Call the target climate entity's set_hvac_mode service
-            await self.hass.services.async_call(
-                "climate",
-                "set_hvac_mode",
-                {
-                    "entity_id": self._target_climate_entity,
-                    "hvac_mode": hvac_mode,
-                },
-                blocking=True,
-            )
+            # Validate target entity exists
+            target_state = self.hass.states.get(self._target_climate_entity)
+            if not target_state:
+                raise W100EntityError(
+                    self._target_climate_entity,
+                    "Target climate entity not found",
+                    W100ErrorCodes.ENTITY_NOT_FOUND
+                )
             
-            # Update W100 display after mode change
-            await self._coordinator.async_sync_w100_display(self._device_name)
+            # Call the target climate entity's set_hvac_mode service
+            try:
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_hvac_mode",
+                    {
+                        "entity_id": self._target_climate_entity,
+                        "hvac_mode": hvac_mode,
+                    },
+                    blocking=True,
+                )
+            except Exception as err:
+                raise W100EntityError(
+                    self._target_climate_entity,
+                    f"Failed to set HVAC mode: {err}",
+                    W100ErrorCodes.ENTITY_OPERATION_FAILED
+                ) from err
+            
+            # Update W100 display after mode change (non-critical)
+            try:
+                await self._coordinator.async_sync_w100_display(self._device_name)
+            except Exception as err:
+                _LOGGER.warning("Failed to sync W100 display after mode change: %s", err)
+                # Continue - display sync failure is not critical
             
             _LOGGER.debug(
                 "Set HVAC mode to %s for %s via target entity %s",
@@ -261,14 +288,21 @@ class W100ClimateEntity(ClimateEntity):
                 self._target_climate_entity,
             )
             
+        except W100IntegrationError:
+            # Re-raise W100 specific errors
+            raise
         except Exception as err:
             _LOGGER.error(
-                "Failed to set HVAC mode %s for %s: %s",
+                "Unexpected error setting HVAC mode %s for %s: %s",
                 hvac_mode,
                 self._device_name,
                 err,
             )
-            raise
+            raise W100EntityError(
+                self._target_climate_entity,
+                f"Unexpected error setting HVAC mode: {err}",
+                W100ErrorCodes.ENTITY_OPERATION_FAILED
+            ) from err
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
@@ -277,6 +311,15 @@ class W100ClimateEntity(ClimateEntity):
             if temperature is None:
                 _LOGGER.warning("No temperature provided in set_temperature call")
                 return
+            
+            # Validate target entity exists
+            target_state = self.hass.states.get(self._target_climate_entity)
+            if not target_state:
+                raise W100EntityError(
+                    self._target_climate_entity,
+                    "Target climate entity not found",
+                    W100ErrorCodes.ENTITY_NOT_FOUND
+                )
             
             # Call the target climate entity's set_temperature service
             service_data = {
@@ -289,15 +332,26 @@ class W100ClimateEntity(ClimateEntity):
             if hvac_mode:
                 service_data["hvac_mode"] = hvac_mode
             
-            await self.hass.services.async_call(
-                "climate",
-                "set_temperature",
-                service_data,
-                blocking=True,
-            )
+            try:
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_temperature",
+                    service_data,
+                    blocking=True,
+                )
+            except Exception as err:
+                raise W100EntityError(
+                    self._target_climate_entity,
+                    f"Failed to set temperature: {err}",
+                    W100ErrorCodes.ENTITY_OPERATION_FAILED
+                ) from err
             
-            # Update W100 display after temperature change
-            await self._coordinator.async_sync_w100_display(self._device_name)
+            # Update W100 display after temperature change (non-critical)
+            try:
+                await self._coordinator.async_sync_w100_display(self._device_name)
+            except Exception as err:
+                _LOGGER.warning("Failed to sync W100 display after temperature change: %s", err)
+                # Continue - display sync failure is not critical
             
             _LOGGER.debug(
                 "Set temperature to %s°C for %s via target entity %s",
@@ -306,13 +360,20 @@ class W100ClimateEntity(ClimateEntity):
                 self._target_climate_entity,
             )
             
+        except W100IntegrationError:
+            # Re-raise W100 specific errors
+            raise
         except Exception as err:
             _LOGGER.error(
-                "Failed to set temperature for %s: %s",
+                "Unexpected error setting temperature for %s: %s",
                 self._device_name,
                 err,
             )
-            raise
+            raise W100EntityError(
+                self._target_climate_entity,
+                f"Unexpected error setting temperature: {err}",
+                W100ErrorCodes.ENTITY_OPERATION_FAILED
+            ) from err
 
     @callback
     def _handle_coordinator_update(self) -> None:

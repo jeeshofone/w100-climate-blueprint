@@ -19,6 +19,19 @@ from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.components import mqtt
 from homeassistant.components.mqtt.models import ReceiveMessage
 
+from .exceptions import (
+    W100IntegrationError,
+    W100DeviceError,
+    W100MQTTError,
+    W100EntityError,
+    W100ConfigurationError,
+    W100ThermostatError,
+    W100RegistryError,
+    W100RecoverableError,
+    W100CriticalError,
+    W100ErrorCodes,
+)
+
 # Generic thermostat domain constant
 GENERIC_THERMOSTAT_DOMAIN = "generic_thermostat"
 
@@ -101,23 +114,35 @@ class W100Coordinator(DataUpdateCoordinator):
 
     async def async_setup(self) -> None:
         """Set up the coordinator with multi-device support."""
-        # Load persisted device and thermostat data
-        await self._async_load_device_data()
-        await self._async_load_thermostat_data()
-        
-        # Note: W100 devices are managed by Zigbee2MQTT - we only create logical devices for our entities
-        
-        # Clean up any orphaned thermostats
-        await self._async_cleanup_orphaned_thermostats()
-        
-        # Set up entity state change listeners for created thermostats
-        await self._async_setup_thermostat_listeners()
-        
-        # Set up MQTT listeners for all configured W100 devices
-        await self._async_setup_all_mqtt_listeners()
-        
-        # Initialize device states for all devices
-        await self._async_initialize_all_device_states()
+        try:
+            # Load persisted device and thermostat data
+            await self._async_load_device_data()
+            await self._async_load_thermostat_data()
+            
+            # Note: W100 devices are managed by Zigbee2MQTT - we only create logical devices for our entities
+            
+            # Clean up any orphaned thermostats
+            await self._async_cleanup_orphaned_thermostats()
+            
+            # Set up entity state change listeners for created thermostats
+            await self._async_setup_thermostat_listeners()
+            
+            # Set up MQTT listeners for all configured W100 devices
+            await self._async_setup_all_mqtt_listeners()
+            
+            # Initialize device states for all devices
+            await self._async_initialize_all_device_states()
+            
+        except W100IntegrationError:
+            # Re-raise W100 specific errors
+            raise
+        except Exception as err:
+            _LOGGER.error("Critical error during coordinator setup: %s", err)
+            raise W100CriticalError(
+                f"Failed to set up W100 coordinator: {err}",
+                requires_restart=True,
+                error_code=W100ErrorCodes.COORDINATOR_SETUP_FAILED
+            ) from err
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from W100 device."""
@@ -133,10 +158,25 @@ class W100Coordinator(DataUpdateCoordinator):
                 self.hass.async_create_task(self.async_cleanup_invalid_thermostats())
             
             # Update device states from MQTT
-            await self._async_update_device_states()
+            try:
+                await self._async_update_device_states()
+            except W100MQTTError as err:
+                _LOGGER.warning("MQTT communication issue during update: %s", err)
+                # Continue with cached data for recoverable MQTT errors
+            except Exception as err:
+                _LOGGER.error("Failed to update device states: %s", err)
+                raise W100DeviceError(
+                    self.config.get(CONF_W100_DEVICE_NAME, "unknown"),
+                    f"Failed to update device states: {err}",
+                    W100ErrorCodes.DEVICE_COMMUNICATION_FAILED
+                ) from err
             
             # Sync W100 displays with current climate states
-            await self._async_sync_all_displays()
+            try:
+                await self._async_sync_all_displays()
+            except Exception as err:
+                _LOGGER.warning("Failed to sync displays, continuing: %s", err)
+                # Display sync failures are non-critical
             
             # Return current state data
             device_name = self.config.get(CONF_W100_DEVICE_NAME, "unknown")
@@ -150,7 +190,12 @@ class W100Coordinator(DataUpdateCoordinator):
                 "created_thermostats": len(self._created_thermostats),
                 "device_states": self._device_states.copy(),
             }
+            
+        except W100IntegrationError:
+            # Re-raise W100 specific errors
+            raise UpdateFailed(f"W100 integration error: {err}") from err
         except Exception as err:
+            _LOGGER.error("Unexpected error during data update: %s", err)
             raise UpdateFailed(f"Error communicating with W100 device: {err}") from err
 
     async def _async_load_device_data(self) -> None:
@@ -1139,11 +1184,17 @@ class W100Coordinator(DataUpdateCoordinator):
         try:
             # Check if MQTT is available
             if not self.hass.services.has_service("mqtt", "publish"):
-                _LOGGER.error("MQTT integration not available, cannot set up W100 listeners")
-                return
+                raise W100MQTTError(
+                    "MQTT integration not available",
+                    error_code=W100ErrorCodes.MQTT_CONNECTION_FAILED
+                )
             
             # Clean up any existing subscriptions first
-            await self._async_cleanup_all_mqtt_subscriptions()
+            try:
+                await self._async_cleanup_all_mqtt_subscriptions()
+            except Exception as err:
+                _LOGGER.warning("Failed to cleanup existing MQTT subscriptions: %s", err)
+                # Continue with setup despite cleanup failure
             
             # Set up listeners for each configured device
             devices_to_setup = []
@@ -1162,13 +1213,41 @@ class W100Coordinator(DataUpdateCoordinator):
                 return
             
             # Set up MQTT listeners for each device
+            setup_errors = []
             for device_name in devices_to_setup:
-                await self._async_setup_device_mqtt_listeners(device_name)
+                try:
+                    await self._async_setup_device_mqtt_listeners(device_name)
+                except W100MQTTError as err:
+                    setup_errors.append(f"{device_name}: {err}")
+                    _LOGGER.error("Failed to setup MQTT for device %s: %s", device_name, err)
+                except Exception as err:
+                    setup_errors.append(f"{device_name}: {err}")
+                    _LOGGER.error("Unexpected error setting up MQTT for device %s: %s", device_name, err)
             
-            _LOGGER.info("Successfully set up MQTT listeners for %d W100 devices", len(devices_to_setup))
+            if setup_errors:
+                if len(setup_errors) == len(devices_to_setup):
+                    # All devices failed
+                    raise W100MQTTError(
+                        f"Failed to setup MQTT for all devices: {'; '.join(setup_errors)}",
+                        error_code=W100ErrorCodes.MQTT_SUBSCRIBE_FAILED
+                    )
+                else:
+                    # Some devices failed - log warning but continue
+                    _LOGGER.warning("Some MQTT setups failed: %s", '; '.join(setup_errors))
             
+            successful_setups = len(devices_to_setup) - len(setup_errors)
+            _LOGGER.info("Successfully set up MQTT listeners for %d/%d W100 devices", 
+                        successful_setups, len(devices_to_setup))
+            
+        except W100MQTTError:
+            # Re-raise MQTT specific errors
+            raise
         except Exception as err:
-            _LOGGER.error("Failed to set up MQTT listeners for W100 devices: %s", err)
+            _LOGGER.error("Critical error setting up MQTT listeners: %s", err)
+            raise W100MQTTError(
+                f"Failed to set up MQTT listeners: {err}",
+                error_code=W100ErrorCodes.MQTT_CONNECTION_FAILED
+            ) from err
 
     async def _async_setup_device_mqtt_listeners(self, device_name: str) -> None:
         """Set up MQTT listeners for a specific W100 device."""
