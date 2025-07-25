@@ -1,0 +1,65 @@
+# W100 Smart Control Integration Services and Automation Support
+
+# Device Triggers
+# These triggers can be used in Home Assistant automations to respond to W100 button presses
+
+# Trigger: W100 Button Toggle
+# Event Type: w100_smart_control_button_action
+# Event Data:
+#   device_name: Name of the W100 device (e.g., "living_room_w100")
+#   action: "toggle"
+#   timestamp: ISO timestamp of the action
+#   integration: "w100_smart_control"
+#
+# Example Automation:
+# trigger:
+#   - platform: device
+#     domain: w100_smart_control
+#     device_id: [device_id]
+#     type: button_toggle
+# action:
+#   - service: light.toggle
+#     target:
+#       entity_id: light.living_room
+
+# Trigger: W100 Button Plus
+# Event Type: w100_smart_control_button_action
+# Event Data:
+#   device_name: Name of the W100 device
+#   action: "plus"
+#   timestamp: ISO timestamp of the action
+#   integration: "w100_smart_control"
+#
+# Example Automation:
+# trigger:
+#   - platform: device
+#     domain: w100_smart_control
+#     device_id: [device_id]
+#     type: button_plus
+# action:
+#   - service: light.turn_on
+#     target:
+#       entity_id: light.living_room
+#     data:
+#       brightness_step_pct: 10
+
+# Trigger: W100 Button Minus
+# Event Type: w100_smart_control_button_action
+# Event Data:
+#   device_name: Name of the W100 device
+#   action: "minus"
+#   timestamp: ISO timestamp of the action
+#   integration: "w100_smart_control"
+#
+# Example Automation:
+# trigger:
+#   - platform: device
+#     domain: w100_smart_control
+#     device_id: [device_id]
+#     type: button_minus
+# action:
+#   - service: light.turn_on
+#     target:
+#       entity_id: light.living_room
+#     data:
+#       brightness_step_pct: -10

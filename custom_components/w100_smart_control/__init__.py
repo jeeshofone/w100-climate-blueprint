@@ -46,6 +46,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Forward setup to platforms with proper device registry integration
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     
+    # Register automation triggers with Home Assistant
+    try:
+        from .device_trigger import async_register_automation_triggers
+        await async_register_automation_triggers(hass)
+    except Exception as err:
+        _LOGGER.warning("Failed to register automation triggers: %s", err)
+    
     _LOGGER.info(
         "W100 Smart Control integration setup complete with device registry integration for entry %s",
         entry.entry_id

@@ -31,10 +31,22 @@ TRIGGER_TYPES = {
     TRIGGER_TYPE_BUTTON_MINUS,
 }
 
-# Trigger schema
+# Trigger schema with comprehensive validation
 TRIGGER_SCHEMA = DEVICE_TRIGGER_BASE_SCHEMA.extend(
     {
         vol.Required(CONF_TYPE): vol.In(TRIGGER_TYPES),
+        vol.Optional("subtype"): cv.string,  # Device name for filtering
+        vol.Optional("metadata"): dict,  # Additional metadata for UI
+    }
+)
+
+# Event data schema for validation
+EVENT_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required("device_name"): cv.string,
+        vol.Required("action"): vol.In(["toggle", "plus", "minus"]),
+        vol.Required("timestamp"): cv.string,
+        vol.Required("integration"): cv.string,
     }
 )
 
@@ -179,10 +191,137 @@ async def async_get_trigger_capabilities(
     hass: HomeAssistant, config: ConfigType
 ) -> dict[str, vol.Schema]:
     """List trigger capabilities for W100 devices."""
-    # No additional capabilities needed for W100 button triggers
-    return {}
+    # Return capabilities for automation UI
+    return {
+        "extra_fields": vol.Schema(
+            {
+                vol.Optional("description"): cv.string,
+                vol.Optional("enabled", default=True): cv.boolean,
+            }
+        )
+    }
 
 
 def async_validate_trigger_config(hass: HomeAssistant, config: ConfigType) -> ConfigType:
     """Validate trigger configuration."""
     return TRIGGER_SCHEMA(config)
+
+
+async def async_register_automation_triggers(hass: HomeAssistant) -> None:
+    """Register W100 triggers with Home Assistant automation system."""
+    try:
+        # Get device registry to find all W100 control devices
+        device_registry = dr.async_get(hass)
+        
+        w100_devices = []
+        for device in device_registry.devices.values():
+            for identifier in device.identifiers:
+                if identifier[0] == DOMAIN and identifier[1].startswith("w100_control_"):
+                    w100_devices.append(device)
+                    break
+        
+        _LOGGER.info(
+            "Registered %d W100 devices for automation triggers",
+            len(w100_devices)
+        )
+        
+        # Log available trigger types for documentation
+        for device in w100_devices:
+            device_name = None
+            for identifier in device.identifiers:
+                if identifier[0] == DOMAIN and identifier[1].startswith("w100_control_"):
+                    device_name = identifier[1].replace("w100_control_", "")
+                    break
+            
+            if device_name:
+                _LOGGER.debug(
+                    "W100 device %s (ID: %s) supports triggers: %s",
+                    device_name,
+                    device.id,
+                    ", ".join(TRIGGER_TYPES)
+                )
+        
+    except Exception as err:
+        _LOGGER.error("Failed to register automation triggers: %s", err)
+
+
+def get_trigger_documentation() -> dict[str, Any]:
+    """Get comprehensive trigger documentation for automation system."""
+    return {
+        "triggers": {
+            TRIGGER_TYPE_BUTTON_TOGGLE: {
+                "name": "W100 Toggle Button",
+                "description": "Triggered when the center button is double-pressed (toggle heat/off)",
+                "event_type": f"{DOMAIN}_button_action",
+                "event_data": {
+                    "action": "toggle",
+                    "device_name": "string",
+                    "timestamp": "ISO datetime string",
+                    "integration": DOMAIN,
+                },
+                "example_automation": {
+                    "trigger": {
+                        "platform": "device",
+                        "domain": DOMAIN,
+                        "device_id": "[device_id]",
+                        "type": TRIGGER_TYPE_BUTTON_TOGGLE,
+                    },
+                    "action": {
+                        "service": "light.toggle",
+                        "target": {"entity_id": "light.living_room"},
+                    },
+                },
+            },
+            TRIGGER_TYPE_BUTTON_PLUS: {
+                "name": "W100 Plus Button",
+                "description": "Triggered when the plus button is pressed (increase temp/fan speed)",
+                "event_type": f"{DOMAIN}_button_action",
+                "event_data": {
+                    "action": "plus",
+                    "device_name": "string",
+                    "timestamp": "ISO datetime string",
+                    "integration": DOMAIN,
+                },
+                "example_automation": {
+                    "trigger": {
+                        "platform": "device",
+                        "domain": DOMAIN,
+                        "device_id": "[device_id]",
+                        "type": TRIGGER_TYPE_BUTTON_PLUS,
+                    },
+                    "action": {
+                        "service": "light.turn_on",
+                        "target": {"entity_id": "light.living_room"},
+                        "data": {"brightness_step_pct": 10},
+                    },
+                },
+            },
+            TRIGGER_TYPE_BUTTON_MINUS: {
+                "name": "W100 Minus Button",
+                "description": "Triggered when the minus button is pressed (decrease temp/fan speed)",
+                "event_type": f"{DOMAIN}_button_action",
+                "event_data": {
+                    "action": "minus",
+                    "device_name": "string",
+                    "timestamp": "ISO datetime string",
+                    "integration": DOMAIN,
+                },
+                "example_automation": {
+                    "trigger": {
+                        "platform": "device",
+                        "domain": DOMAIN,
+                        "device_id": "[device_id]",
+                        "type": TRIGGER_TYPE_BUTTON_MINUS,
+                    },
+                    "action": {
+                        "service": "light.turn_on",
+                        "target": {"entity_id": "light.living_room"},
+                        "data": {"brightness_step_pct": -10},
+                    },
+                },
+            },
+        },
+        "event_schema": EVENT_DATA_SCHEMA,
+        "supported_platforms": ["device", "event"],
+        "integration_domain": DOMAIN,
+    }

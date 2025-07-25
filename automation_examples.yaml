@@ -1,0 +1,212 @@
+# W100 Smart Control Integration - Automation Examples
+# These examples show how to use W100 button triggers in Home Assistant automations
+
+# Example 1: Toggle Living Room Lights with W100 Center Button
+automation:
+  - alias: "W100 Living Room - Toggle Lights"
+    description: "Toggle living room lights when W100 center button is double-pressed"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"  # Replace with actual device ID
+        type: button_toggle
+    action:
+      - service: light.toggle
+        target:
+          entity_id: light.living_room_main
+      - service: notify.persistent_notification
+        data:
+          message: "Living room lights toggled via W100"
+
+# Example 2: Increase Brightness with W100 Plus Button
+  - alias: "W100 Living Room - Increase Brightness"
+    description: "Increase living room light brightness when W100 plus button is pressed"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"
+        type: button_plus
+    condition:
+      - condition: state
+        entity_id: light.living_room_main
+        state: "on"
+    action:
+      - service: light.turn_on
+        target:
+          entity_id: light.living_room_main
+        data:
+          brightness_step_pct: 10
+
+# Example 3: Decrease Brightness with W100 Minus Button
+  - alias: "W100 Living Room - Decrease Brightness"
+    description: "Decrease living room light brightness when W100 minus button is pressed"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"
+        type: button_minus
+    condition:
+      - condition: state
+        entity_id: light.living_room_main
+        state: "on"
+    action:
+      - service: light.turn_on
+        target:
+          entity_id: light.living_room_main
+        data:
+          brightness_step_pct: -10
+
+# Example 4: Scene Control with W100 Buttons
+  - alias: "W100 Living Room - Evening Scene"
+    description: "Activate evening scene when W100 toggle is pressed after sunset"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"
+        type: button_toggle
+    condition:
+      - condition: sun
+        after: sunset
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.living_room_evening
+
+# Example 5: Multi-Device Control with W100 Plus Button
+  - alias: "W100 Living Room - All Lights On"
+    description: "Turn on all living room devices when W100 plus is pressed"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"
+        type: button_plus
+    action:
+      - service: light.turn_on
+        target:
+          area_id: living_room
+      - service: switch.turn_on
+        target:
+          entity_id: switch.living_room_fan
+
+# Example 6: Advanced Automation with Multiple Conditions
+  - alias: "W100 Living Room - Smart Control"
+    description: "Smart control based on time and current state"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"
+        type: button_toggle
+    action:
+      - choose:
+          # Morning routine
+          - conditions:
+              - condition: time
+                after: "06:00:00"
+                before: "12:00:00"
+            sequence:
+              - service: scene.turn_on
+                target:
+                  entity_id: scene.morning_routine
+          # Evening routine
+          - conditions:
+              - condition: time
+                after: "18:00:00"
+                before: "23:00:00"
+            sequence:
+              - service: scene.turn_on
+                target:
+                  entity_id: scene.evening_routine
+        # Default action
+        default:
+          - service: light.toggle
+            target:
+              entity_id: light.living_room_main
+
+# Example 7: Using Event Data in Automations
+  - alias: "W100 - Log Button Actions"
+    description: "Log all W100 button actions with device information"
+    trigger:
+      - platform: event
+        event_type: w100_smart_control_button_action
+    action:
+      - service: logbook.log
+        data:
+          name: "W100 Button Action"
+          message: >
+            W100 device {{ trigger.event.data.device_name }} 
+            {{ trigger.event.data.action }} button pressed at 
+            {{ trigger.event.data.timestamp }}
+
+# Example 8: Conditional Actions Based on Device Name
+  - alias: "W100 - Multi-Device Handler"
+    description: "Handle button presses from multiple W100 devices differently"
+    trigger:
+      - platform: event
+        event_type: w100_smart_control_button_action
+    action:
+      - choose:
+          # Living room W100
+          - conditions:
+              - condition: template
+                value_template: "{{ trigger.event.data.device_name == 'living_room_w100' }}"
+            sequence:
+              - service: light.toggle
+                target:
+                  entity_id: light.living_room_main
+          # Bedroom W100
+          - conditions:
+              - condition: template
+                value_template: "{{ trigger.event.data.device_name == 'bedroom_w100' }}"
+            sequence:
+              - service: light.toggle
+                target:
+                  entity_id: light.bedroom_main
+
+# Example 9: Integration with Other Smart Home Systems
+  - alias: "W100 - Notify Mobile App"
+    description: "Send mobile notification when W100 button is pressed"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"
+        type: button_toggle
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "W100 Button Pressed"
+          message: "Living room W100 toggle button was pressed"
+          data:
+            actions:
+              - action: "LIGHTS_ON"
+                title: "Turn Lights On"
+              - action: "LIGHTS_OFF"
+                title: "Turn Lights Off"
+
+# Example 10: Time-Based Button Behavior
+  - alias: "W100 - Time-Based Control"
+    description: "Different actions based on time of day"
+    trigger:
+      - platform: device
+        domain: w100_smart_control
+        device_id: "your_w100_device_id_here"
+        type: button_plus
+    action:
+      - if:
+          - condition: time
+            after: "22:00:00"
+            before: "06:00:00"
+        then:
+          # Night mode - dim lights
+          - service: light.turn_on
+            target:
+              entity_id: light.living_room_main
+            data:
+              brightness_pct: 10
+              color_name: red
+        else:
+          # Day mode - normal brightness
+          - service: light.turn_on
+            target:
+              entity_id: light.living_room_main
+            data:
+              brightness_pct: 80
