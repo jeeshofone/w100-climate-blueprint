@@ -368,11 +368,15 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       hvac_mode: heat
+                  - delay:
+                      milliseconds: 500
                   - service: climate.set_preset_mode
                     target:
                       entity_id: !input fan_climate_entity
                     data:
                       preset_mode: !input philips_heating_preset
+                  - delay:
+                      milliseconds: 500
                   - choose:
                       - conditions:
                           - condition: template
@@ -383,6 +387,8 @@ action:
                               entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
                             data:
                               value: 37
+                  - delay:
+                      milliseconds: 500
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -473,11 +479,15 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       hvac_mode: fan_only
+                  - delay:
+                      milliseconds: 500
                   - service: climate.set_preset_mode
                     target:
                       entity_id: !input fan_climate_entity
                     data:
                       preset_mode: !input philips_idle_preset
+                  - delay:
+                      milliseconds: 500
                   # Set temperature based on idle preset mode
                   - choose:
                       - conditions:
@@ -494,6 +504,8 @@ action:
                                 {% else %}
                                   37
                                 {% endif %}
+                  - delay:
+                      milliseconds: 500
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -520,6 +532,17 @@ action:
       - conditions:
           - condition: trigger
             id: smart_thermostat_state
+          # Don't interfere if heat mode is being turned ON (let Heat Mode On section handle it)
+          - condition: not
+            conditions:
+              - condition: and
+                conditions:
+                  - condition: state
+                    entity_id: !input heat_mode_boolean
+                    state: "on"
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: "heat"
           - condition: or
             conditions:
               # Completely OFF
@@ -615,6 +638,8 @@ action:
                               entity_id: !input fan_climate_entity
                             data:
                               preset_mode: "low"
+                          - delay:
+                              milliseconds: 500
                           - choose:
                               - conditions:
                                   - condition: template
@@ -632,6 +657,8 @@ action:
                           entity_id: !input fan_climate_entity
                         data:
                           preset_mode: !input philips_idle_preset
+                      - delay:
+                          milliseconds: 500
                       - choose:
                           - conditions:
                               - condition: template
@@ -647,6 +674,8 @@ action:
                                     {% else %}
                                       37
                                     {% endif %}
+                  - delay:
+                      milliseconds: 500
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
