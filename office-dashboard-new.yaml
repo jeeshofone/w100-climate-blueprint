@@ -1,0 +1,519 @@
+views:
+  - title: Home
+    path: home
+    icon: mdi:home
+    cards:
+      - type: grid
+        columns: 3
+        cards:
+          - type: entity
+            entity: climate.smart_office_fan_controller
+            name: Smart Thermostat
+            icon: mdi:thermostat
+          - type: entity
+            entity: sensor.br2_office_humidity
+            name: Current Humidity
+            icon: mdi:water-percent
+          - type: entity
+            entity: input_boolean.office_fan_heat_mode
+            name: Heat Mode Active
+            icon: mdi:radiator
+      - type: history-graph
+        title: Temperature Control
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: climate.office_heater
+            attribute: current_temperature
+            name: Current Temp
+          - entity: climate.smart_office_fan_controller
+            attribute: temperature
+            name: Target Temp
+          - entity: number.office_heater_temperature
+            name: Heater Setpoint
+      - type: history-graph
+        title: Heater Power Consumption
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+            name: Smart Plug Power (W)
+          - entity: sensor.br_heater_consumption
+            name: Heater Power (W)
+          - entity: input_boolean.office_fan_heat_mode
+            name: Heat Mode
+            y_axis: secondary
+      - type: statistics-graph
+        title: Daily Energy Usage
+        chart_type: line
+        period: hour
+        stat_types:
+          - change
+        entities:
+          - sensor.smart_plug_2305155763655451070148e1e9c6662e_energy
+      - type: grid
+        columns: 2
+        cards:
+          - type: entities
+            title: System Status
+            entities:
+              - entity: climate.smart_office_fan_controller
+                name: Thermostat Mode
+                attribute: hvac_mode
+              - entity: climate.smart_office_fan_controller
+                name: Thermostat Action
+                attribute: hvac_action
+              - entity: climate.office_heater
+                name: Heater Mode
+                attribute: hvac_mode
+              - entity: climate.office_heater
+                name: Heater Preset
+                attribute: preset_mode
+              - entity: fan.office_heater
+                name: Fan Preset
+                attribute: preset_mode
+              - entity: climate.office_heater
+                name: Swing Mode
+                attribute: swing_mode
+          - type: entities
+            title: Power Statistics
+            entities:
+              - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+                name: Smart Plug Power
+              - entity: sensor.br_heater_consumption
+                name: Heater Power
+              - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_energy
+                name: Total Energy
+              - type: divider
+              - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+                name: Power Trend
+                secondary_info: last-updated
+      - type: entities
+        title: PID Controller Debug
+        show_header_toggle: false
+        entities:
+          - entity: climate.smart_office_fan_controller
+            name: P Value
+            attribute: proportional
+          - entity: climate.smart_office_fan_controller
+            name: I Value
+            attribute: integral
+          - entity: climate.smart_office_fan_controller
+            name: D Value
+            attribute: derivative
+          - entity: climate.smart_office_fan_controller
+            name: Control Output
+            attribute: control_output
+          - entity: climate.smart_office_fan_controller
+            name: Error
+            attribute: error
+      - type: entities
+        title: W100 Remote Control
+        entities:
+          - entity: select.tempcontrol02_sensor
+            name: Display Mode
+          - entity: number.tempcontrol02_external_temperature
+            name: Display Temperature
+          - entity: number.tempcontrol02_external_humidity
+            name: Display Humidity
+          - entity: sensor.br2_office_humidity
+            name: Actual Humidity
+      - type: grid
+        columns: 2
+        cards:
+          - type: thermostat
+            entity: climate.smart_office_fan_controller
+            name: Smart PID Thermostat
+            features:
+              - type: climate-hvac-modes
+              - type: climate-preset-modes
+          - type: thermostat
+            entity: climate.office_heater
+            name: Direct Heater Control
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Live System Monitor
+        graph_span: 2h
+        update_interval: 10s
+        yaxis:
+          - id: temp
+            min: 18
+            max: 28
+          - id: power
+            opposite: true
+            min: 0
+        apex_config:
+          chart:
+            height: 350px
+            animations:
+              enabled: true
+              dynamicAnimation:
+                speed: 1000
+          yaxis:
+            - title:
+                text: Temperature (°C)
+            - title:
+                text: Power (W)
+        series:
+          - entity: climate.office_heater
+            attribute: current_temperature
+            name: Room Temp
+            type: line
+            color: blue
+            stroke_width: 2
+            yaxis_id: temp
+          - entity: climate.smart_office_fan_controller
+            attribute: temperature
+            name: Target
+            type: line
+            color: red
+            stroke_width: 2
+            curve: stepline
+            yaxis_id: temp
+          - entity: sensor.br_heater_consumption
+            name: Heater Power
+            type: area
+            color: orange
+            opacity: 0.4
+            yaxis_id: power
+          - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+            name: Total Power
+            type: line
+            color: purple
+            stroke_width: 1
+            yaxis_id: power
+      - type: entities
+        title: Automation Status
+        entities:
+          - entity: automation.office_w100
+            name: Main Control Automation
+          - type: divider
+          - entity: climate.office_heater
+            name: Temperature Trend
+            attribute: current_temperature
+            secondary_info: last-updated
+  - title: Detailed Analytics
+    path: analytics
+    icon: mdi:chart-line
+    cards:
+      - type: history-graph
+        title: 24-Hour Temperature Analysis
+        hours_to_show: 24
+        refresh_interval: 30
+        entities:
+          - entity: climate.office_heater
+            attribute: current_temperature
+            name: Room Temperature
+          - entity: climate.smart_office_fan_controller
+            attribute: temperature
+            name: Target Temperature
+          - entity: number.office_heater_temperature
+            name: Heater Setpoint
+          - entity: input_boolean.office_fan_heat_mode
+            name: Heating Active
+      - type: history-graph
+        title: Power Usage Pattern
+        hours_to_show: 24
+        refresh_interval: 30
+        entities:
+          - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+            name: Total Power (Smart Plug)
+          - entity: sensor.br_heater_consumption
+            name: Heater Power
+          - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_energy
+            name: Cumulative Energy
+      - type: history-graph
+        title: Environmental Monitoring
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.br2_office_humidity
+            name: Office Humidity
+          - entity: climate.office_heater
+            attribute: current_temperature
+            name: Office Temperature
+      - type: grid
+        columns: 2
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Heating Efficiency Analysis
+            graph_span: 24h
+            update_interval: 1min
+            yaxis:
+              - id: power
+                min: 0
+                decimals: 0
+              - id: temp
+                opposite: true
+                min: 16
+                max: 30
+                decimals: 1
+            apex_config:
+              chart:
+                height: 400px
+              yaxis:
+                - title:
+                    text: Power (W)
+                - title:
+                    text: Temperature (°C)
+            series:
+              - entity: sensor.br_heater_consumption
+                name: Heater Power
+                type: column
+                color: orange
+                yaxis_id: power
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+                name: Total Power
+                type: line
+                color: red
+                stroke_width: 2
+                yaxis_id: power
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: climate.office_heater
+                attribute: current_temperature
+                name: Room Temperature
+                type: line
+                color: blue
+                stroke_width: 3
+                yaxis_id: temp
+                group_by:
+                  func: avg
+                  duration: 5min
+              - entity: climate.smart_office_fan_controller
+                attribute: temperature
+                name: Target Temperature
+                type: line
+                color: green
+                stroke_width: 2
+                curve: stepline
+                yaxis_id: temp
+          - type: statistics-graph
+            title: System Performance
+            chart_type: bar
+            period: hour
+            stat_types:
+              - mean
+              - min
+              - max
+            entities:
+              - climate.office_heater
+              - sensor.br_heater_consumption
+              - sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: PID Controller Performance
+        graph_span: 6h
+        update_interval: 30s
+        yaxis:
+          - id: temp
+            min: 16
+            max: 30
+          - id: binary
+            opposite: true
+            show: false
+            min: 0
+            max: 1
+          - id: power
+            opposite: true
+            min: 0
+        apex_config:
+          chart:
+            height: 400px
+          stroke:
+            width:
+              - 3
+              - 2
+              - 2
+              - 1
+              - 1
+          yaxis:
+            - title:
+                text: Temperature (°C)
+            - title:
+                text: ''
+            - title:
+                text: Power (W)
+        series:
+          - entity: climate.office_heater
+            attribute: current_temperature
+            name: Current Temp
+            type: line
+            color: blue
+            stroke_width: 3
+            yaxis_id: temp
+          - entity: climate.smart_office_fan_controller
+            attribute: temperature
+            name: Target Temp
+            type: line
+            color: red
+            stroke_width: 2
+            curve: stepline
+            yaxis_id: temp
+          - entity: input_boolean.office_fan_heat_mode
+            name: Heat Active
+            type: area
+            color: orange
+            opacity: 0.3
+            yaxis_id: binary
+          - entity: sensor.br_heater_consumption
+            name: Heater Power
+            type: line
+            color: purple
+            stroke_width: 1
+            yaxis_id: power
+          - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_power
+            name: Total Power
+            type: line
+            color: gray
+            stroke_width: 1
+            yaxis_id: power
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Daily Energy Consumption Pattern
+        graph_span: 7d
+        span:
+          end: day
+        update_interval: 1h
+        apex_config:
+          chart:
+            height: 300px
+        series:
+          - entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_energy
+            name: Energy Usage
+            type: column
+            color: green
+            group_by:
+              func: diff
+              duration: 1h
+      - type: history-graph
+        title: Control Events Timeline
+        hours_to_show: 6
+        refresh_interval: 30
+        entities:
+          - entity: input_boolean.office_fan_heat_mode
+            name: Heat Mode
+          - entity: climate.smart_office_fan_controller
+            attribute: hvac_action
+            name: Thermostat Action
+          - entity: climate.office_heater
+            attribute: preset_mode
+            name: Heater Preset
+          - entity: fan.office_heater
+            attribute: preset_mode
+            name: Fan Preset
+      - type: grid
+        columns: 4
+        cards:
+          - type: statistic
+            entity: sensor.smart_plug_2305155763655451070148e1e9c6662e_energy
+            period:
+              calendar:
+                period: day
+            stat_type: change
+            name: Energy Today
+            unit: kWh
+          - type: statistic
+            entity: sensor.br_heater_consumption
+            period:
+              calendar:
+                period: day
+            stat_type: mean
+            name: Avg Heater Power
+            unit: W
+          - type: statistic
+            entity: climate.office_heater
+            attribute: current_temperature
+            period:
+              calendar:
+                period: day
+            stat_type: mean
+            name: Avg Temp Today
+            unit: °C
+          - type: statistic
+            entity: input_boolean.office_fan_heat_mode
+            period:
+              calendar:
+                period: day
+            stat_type: count
+            name: Heat Cycles Today
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Philips Heater Preset Analysis
+        graph_span: 12h
+        update_interval: 1min
+        yaxis:
+          - id: temp
+            min: 16
+            max: 30
+          - id: power
+            opposite: true
+            min: 0
+        apex_config:
+          chart:
+            height: 300px
+          yaxis:
+            - title:
+                text: Temperature (°C)
+            - title:
+                text: Power (W)
+        series:
+          - entity: climate.office_heater
+            attribute: current_temperature
+            name: Temperature
+            type: line
+            color: blue
+            stroke_width: 2
+            yaxis_id: temp
+          - entity: climate.office_heater
+            attribute: preset_mode
+            name: Heater Preset
+            type: line
+            color: orange
+            stroke_width: 2
+            yaxis_id: temp
+            transform: |
+              return x.map((entry) => {
+                const presetMap = {
+                  'low': 20,
+                  'medium': 22,
+                  'high': 25,
+                  'auto_plus': 27
+                };
+                return [entry[0], presetMap[entry[1]] || 18];
+              });
+          - entity: sensor.br_heater_consumption
+            name: Power Usage
+            type: area
+            color: red
+            opacity: 0.3
+            yaxis_id: power
+      - type: entities
+        title: Philips Heater Controls
+        entities:
+          - entity: climate.office_heater
+            name: Heater Climate Control
+          - entity: fan.office_heater
+            name: Fan Control
+          - entity: number.office_heater_temperature
+            name: Temperature Setting
+          - type: divider
+          - entity: climate.office_heater
+            name: Current Preset
+            attribute: preset_mode
+          - entity: fan.office_heater
+            name: Fan Preset
+            attribute: preset_mode
+          - entity: climate.office_heater
+            name: Swing Mode
+            attribute: swing_mode
