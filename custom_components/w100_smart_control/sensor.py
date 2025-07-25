@@ -98,6 +98,21 @@ class W100BaseSensor(SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_{device_name}_{sensor_type}"
         self._attr_name = f"W100 {device_name.replace('_', ' ').title()} {sensor_type.replace('_', ' ').title()}"
         
+        # Enhanced logging context
+        self._log_context = {
+            "device_name": device_name,
+            "sensor_type": sensor_type,
+            "entity_id": self._attr_unique_id,
+            "integration": DOMAIN,
+        }
+        
+        _LOGGER.debug(
+            "Initializing W100 sensor '%s' for device '%s'",
+            sensor_type,
+            device_name,
+            extra=self._log_context
+        )
+        
         # Set up device info for logical device
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"w100_control_{device_name}")},

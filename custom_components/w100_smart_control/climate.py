@@ -101,6 +101,21 @@ class W100ClimateEntity(ClimateEntity):
         self._attr_unique_id = f"{DOMAIN}_{device_name}_climate"
         self._attr_name = f"W100 {device_name.replace('_', ' ').title()}"
         
+        # Enhanced logging context
+        self._log_context = {
+            "device_name": device_name,
+            "target_entity": target_climate_entity,
+            "entity_id": self._attr_unique_id,
+            "integration": DOMAIN,
+        }
+        
+        _LOGGER.info(
+            "Initializing W100 climate entity for device '%s' targeting '%s'",
+            device_name,
+            target_climate_entity,
+            extra=self._log_context
+        )
+        
         # Set up device info for logical device (not physical W100 device)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"w100_control_{device_name}")},
@@ -712,18 +727,31 @@ class W100ClimateEntity(ClimateEntity):
     async def _execute_button_action(self, action: str) -> None:
         """Execute the actual button action logic."""
         try:
-            _LOGGER.debug("Executing W100 button action %s for device %s", action, self._device_name)
+            _LOGGER.debug(
+                "Executing W100 button action '%s' for device '%s'",
+                action,
+                self._device_name,
+                extra={**self._log_context, "action": action}
+            )
             
             current_state = self.target_climate_state
             if not current_state:
                 _LOGGER.warning(
-                    "Target climate entity %s not available for W100 button action",
+                    "Target climate entity '%s' not available for W100 button action",
                     self._target_climate_entity,
+                    extra={**self._log_context, "action": action, "target_state": "unavailable"}
                 )
                 return
             
             current_hvac_mode = current_state.state
             current_temp = current_state.attributes.get("temperature", 21)
+            
+            action_context = {
+                **self._log_context,
+                "action": action,
+                "current_mode": current_hvac_mode,
+                "current_temp": current_temp,
+            }
             
             # Handle different button actions based on current mode
             if action == "double":
@@ -733,17 +761,35 @@ class W100ClimateEntity(ClimateEntity):
             elif action == "minus":
                 await self._handle_minus_button_advanced(current_hvac_mode, current_temp, current_state)
             else:
-                _LOGGER.warning("Unknown W100 button action %s for device %s", action, self._device_name)
+                _LOGGER.warning(
+                    "Unknown W100 button action '%s' for device '%s'",
+                    action,
+                    self._device_name,
+                    extra=action_context
+                )
                 return
             
             # Send beep feedback if configured
             if self._beep_mode in ["Enable Beep", "On-Mode Change"]:
                 await self._send_beep_command(action)
             
-            _LOGGER.debug("Completed W100 button action %s for device %s", action, self._device_name)
+            _LOGGER.info(
+                "Successfully executed W100 button action '%s' for device '%s' (mode: %s → %s)",
+                action,
+                self._device_name,
+                current_hvac_mode,
+                "toggled" if action == "double" else "adjusted",
+                extra=action_context
+            )
             
         except Exception as err:
-            _LOGGER.error("Failed to execute W100 button action %s for %s: %s", action, self._device_name, err)
+            _LOGGER.error(
+                "Failed to execute W100 button action '%s' for device '%s': %s",
+                action,
+                self._device_name,
+                err,
+                extra={**self._log_context, "action": action, "error_type": type(err).__name__}
+            )
 
     async def _handle_toggle_button_advanced(self, current_hvac_mode: str) -> None:
         """Handle W100 toggle button with advanced features."""

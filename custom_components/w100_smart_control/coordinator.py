@@ -95,6 +95,20 @@ class W100Coordinator(DataUpdateCoordinator):
         self._thermostat_configs: dict[str, dict[str, Any]] = {}
         self._storage = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_thermostats")
         
+        # Enhanced logging context
+        self._log_context = {
+            "entry_id": entry.entry_id,
+            "device_name": entry.data.get(CONF_W100_DEVICE_NAME, "unknown"),
+            "integration": DOMAIN,
+        }
+        
+        _LOGGER.info(
+            "Initializing W100 coordinator for device '%s' (entry: %s)",
+            self._log_context["device_name"],
+            self._log_context["entry_id"],
+            extra=self._log_context
+        )
+        
         # Multi-device state tracking - each device operates independently
         self._device_states: dict[str, dict[str, Any]] = {}
         self._device_configs: dict[str, dict[str, Any]] = {}
@@ -114,14 +128,30 @@ class W100Coordinator(DataUpdateCoordinator):
 
     async def async_setup(self) -> None:
         """Set up the coordinator with multi-device support."""
+        _LOGGER.info(
+            "Starting coordinator setup for device '%s'",
+            self._log_context["device_name"],
+            extra=self._log_context
+        )
+        
         try:
             # Load persisted device and thermostat data
+            _LOGGER.debug(
+                "Loading persisted data for device '%s'",
+                self._log_context["device_name"],
+                extra=self._log_context
+            )
             await self._async_load_device_data()
             await self._async_load_thermostat_data()
             
             # Note: W100 devices are managed by Zigbee2MQTT - we only create logical devices for our entities
             
             # Clean up any orphaned thermostats
+            _LOGGER.debug(
+                "Cleaning up orphaned thermostats for device '%s'",
+                self._log_context["device_name"],
+                extra=self._log_context
+            )
             await self._async_cleanup_orphaned_thermostats()
             
             # Set up entity state change listeners for created thermostats
@@ -208,13 +238,24 @@ class W100Coordinator(DataUpdateCoordinator):
                 _LOGGER.debug(
                     "Loaded %d device configurations from storage for entry %s",
                     len(self._device_configs),
-                    self.entry.entry_id
+                    self.entry.entry_id,
+                    extra={**self._log_context, "device_configs_count": len(self._device_configs)}
                 )
                 
                 # Migrate single device config to multi-device format if needed
                 await self._async_migrate_single_device_config()
+            else:
+                _LOGGER.debug(
+                    "No persisted device data found for entry %s",
+                    self.entry.entry_id,
+                    extra=self._log_context
+                )
         except Exception as err:
-            _LOGGER.warning("Failed to load device data: %s", err)
+            _LOGGER.warning(
+                "Failed to load device data: %s",
+                err,
+                extra={**self._log_context, "error_type": type(err).__name__}
+            )
             self._device_configs = {}
             self._device_thermostats = {}
             # Try to migrate from single device config
@@ -643,7 +684,20 @@ class W100Coordinator(DataUpdateCoordinator):
         Raises:
             HomeAssistantError: If thermostat creation fails
         """
+        w100_device_name = self.config.get("w100_device_name", "w100")
+        thermostat_context = {
+            "device_name": w100_device_name,
+            "operation": "thermostat_creation",
+            "integration": DOMAIN,
+        }
+        
         try:
+            _LOGGER.info(
+                "Creating generic thermostat for W100 device '%s'",
+                w100_device_name,
+                extra=thermostat_context
+            )
+            
             # Extract configuration with defaults
             heater_entity = config.get(CONF_HEATER_SWITCH)
             target_sensor = config.get(CONF_TEMPERATURE_SENSOR)
@@ -653,6 +707,16 @@ class W100Coordinator(DataUpdateCoordinator):
             cold_tolerance = config.get(CONF_COLD_TOLERANCE, DEFAULT_COLD_TOLERANCE)
             hot_tolerance = config.get(CONF_HOT_TOLERANCE, DEFAULT_HOT_TOLERANCE)
             precision = config.get(CONF_PRECISION, DEFAULT_PRECISION)
+            
+            _LOGGER.debug(
+                "Thermostat configuration for device '%s': heater=%s, sensor=%s, temp_range=%.1f-%.1f°C",
+                w100_device_name,
+                heater_entity,
+                target_sensor,
+                min_temp,
+                max_temp,
+                extra={**thermostat_context, "heater_entity": heater_entity, "temp_sensor": target_sensor}
+            )
             
             # Validate required entities exist
             if not self.hass.states.get(heater_entity):
@@ -1488,7 +1552,21 @@ class W100Coordinator(DataUpdateCoordinator):
 
     async def async_handle_w100_action(self, action: str, device_name: str) -> None:
         """Handle W100 button actions with debouncing and error recovery."""
+        action_context = {
+            "device_name": device_name,
+            "action": action,
+            "operation": "w100_action_handling",
+            "integration": DOMAIN,
+        }
+        
         try:
+            _LOGGER.info(
+                "Received W100 action '%s' from device '%s'",
+                action,
+                device_name,
+                extra=action_context
+            )
+            
             # Enhanced debouncing with per-action tracking
             now = datetime.now()
             debounce_key = f"{device_name}_{action}"
@@ -1500,8 +1578,15 @@ class W100Coordinator(DataUpdateCoordinator):
                 debounce_time = 1.0  # Longer debounce for toggle to prevent accidental double-toggles
             
             if last_action_time and (now - last_action_time).total_seconds() < debounce_time:
-                _LOGGER.debug("Debouncing rapid W100 action %s from %s (%.2fs since last)", 
-                             action, device_name, (now - last_action_time).total_seconds())
+                time_since_last = (now - last_action_time).total_seconds()
+                _LOGGER.debug(
+                    "Debouncing rapid W100 action '%s' from device '%s' (%.2fs since last, threshold: %.1fs)",
+                    action,
+                    device_name,
+                    time_since_last,
+                    debounce_time,
+                    extra={**action_context, "debounce_time": time_since_last, "debounce_threshold": debounce_time}
+                )
                 return
             
             self._last_action_time[debounce_key] = now
@@ -1801,12 +1886,32 @@ class W100Coordinator(DataUpdateCoordinator):
         
         Requirements: 5.4, 5.5, 8.3
         """
+        sync_context = {
+            "device_name": device_name,
+            "operation": "display_sync",
+            "integration": DOMAIN,
+        }
+        
         try:
+            _LOGGER.debug(
+                "Starting W100 display sync for device '%s'",
+                device_name,
+                extra=sync_context
+            )
+            
             if device_name not in self._device_states:
-                _LOGGER.debug("Device %s not in device states, initializing", device_name)
+                _LOGGER.debug(
+                    "Device '%s' not in device states, initializing",
+                    device_name,
+                    extra=sync_context
+                )
                 await self._async_initialize_device_states()
                 if device_name not in self._device_states:
-                    _LOGGER.warning("Failed to initialize device state for %s", device_name)
+                    _LOGGER.warning(
+                        "Failed to initialize device state for '%s'",
+                        device_name,
+                        extra=sync_context
+                    )
                     return
             
             device_state = self._device_states[device_name]
