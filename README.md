@@ -106,10 +106,10 @@ When using W100 remote with Philips heater:
 Both devices are treated as "dumb" heaters controlled by the smart thermostat, but use different control methods:
 
 #### **Kogan Bladeless Fan:**
-- **Control Method**: Temperature + warm level settings
-- **Heat Mode ON**: `temperature: 30°C` + `warm_level: 4` (high heat)
-- **PID Idle**: `temperature: 22°C` + `warm_level: 1` + `fan_speed: 3`
-- **Heat Mode OFF**: `temperature: 22°C` + `warm_level: 1` + `fan_speed: 3`
+- **Control Method**: HVAC mode + temperature + warm level + fan speed settings
+- **Heat Mode ON (PID calls for heat)**: `hvac_mode: heat` + `temperature: 30°C` + `warm_level: 4`
+- **Heat Mode OFF**: `hvac_mode: fan_only` + `temperature: 22°C` + `warm_level: 1` + `fan_speed: 3`
+- **Smart Thermostat Idle/Off**: `hvac_mode: fan_only` + `temperature: 22°C` + `warm_level: 1` + `fan_speed: 3`
 
 #### **Philips Fan Heater:**
 - **Control Method**: Preset mode switching (temperature number mostly ignored)
@@ -118,10 +118,12 @@ Both devices are treated as "dumb" heaters controlled by the smart thermostat, b
 - **Heat Mode OFF**: `preset: "ventilation"` + `temperature: 1°C` (air circulation only)
 
 #### **Key Differences:**
-- **Kogan**: Uses temperature and warm level for gradual heat control
+- **Kogan**: Uses HVAC mode switching (heat vs fan_only) + temperature and warm level for heat control
 - **Philips**: Uses preset modes for on/off heat control (temperature setting ignored)
 - **Both**: Provide instant electric heating when PID controller demands heat
 - **Both**: Allow external temperature sensors to override internal thermostats
+- **Kogan**: PID idle and Heat Mode OFF use identical settings (fan_only mode)
+- **Philips**: PID idle and Heat Mode OFF both use ventilation preset but for different reasons
 
 ## Dependencies
 
