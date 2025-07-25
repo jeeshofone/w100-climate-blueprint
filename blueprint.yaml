@@ -133,18 +133,6 @@ blueprint:
             - "4"
       default: "4"
     
-    idle_warm_level:
-      name: Idle Warm Level (Kogan Only)
-      description: Warm level when maintaining temperature (only for Kogan Bladeless Fan)
-      selector:
-        select:
-          options:
-            - "1\""
-            - "2"
-            - "3"
-            - "4"
-      default: "1\""
-    
     idle_fan_speed:
       name: Idle Fan Speed (Kogan Only)
       description: Fan speed (1-9) when smart thermostat is idle or off (only for Kogan Bladeless Fan)
@@ -240,7 +228,6 @@ variables:
   humidity_entity: !input humidity_sensor
   backup_humidity_entity: !input backup_humidity_sensor
   idle_fan_speed: !input idle_fan_speed
-  idle_warm_level: !input idle_warm_level
   heating_temp: !input heating_temperature
   philips_heating_preset: !input philips_heating_preset
   philips_idle_preset: !input philips_idle_preset
@@ -480,17 +467,6 @@ action:
                       entity_id: !input fan_climate_entity
                     data:
                       temperature: !input idle_temperature
-                  # Only set warm level if entity is provided
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ warm_level_entity != '' }}"
-                        sequence:
-                          - service: select.select_option
-                            target:
-                              entity_id: "{{ warm_level_entity if warm_level_entity != '' else 'sun.sun' }}"
-                            data:
-                              option: !input idle_warm_level
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -610,17 +586,6 @@ action:
                       fan_mode: !input idle_fan_speed
                   - delay:
                       milliseconds: 500
-                  # Only set warm level if entity is provided
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ warm_level_entity != '' }}"
-                        sequence:
-                          - service: select.select_option
-                            target:
-                              entity_id: "{{ warm_level_entity if warm_level_entity != '' else 'sun.sun' }}"
-                            data:
-                              option: !input idle_warm_level
                   - service: climate.set_temperature
                     target:
                       entity_id: !input fan_climate_entity
