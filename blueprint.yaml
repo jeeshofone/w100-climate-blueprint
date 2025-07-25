@@ -241,7 +241,9 @@ trigger:
   - platform: state
     entity_id: !input smart_thermostat_entity
     id: smart_thermostat_state
-    to: "off"
+    to: 
+      - "off"
+      - "idle"
 
   # Smart thermostat temperature change trigger (for beep)
   - platform: state
@@ -518,14 +520,23 @@ action:
       - conditions:
           - condition: trigger
             id: smart_thermostat_state
-          - condition: not
+          - condition: or
             conditions:
-              - condition: state
-                entity_id: !input smart_thermostat_entity
-                state: heat
-          - condition: state
-            entity_id: !input smart_thermostat_entity
-            state: "off"
+              # Completely OFF
+              - condition: and
+                conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: "off"
+              # Idle while heat mode is still ON
+              - condition: and
+                conditions:
+                  - condition: state
+                    entity_id: !input smart_thermostat_entity
+                    state: "idle"
+                  - condition: state
+                    entity_id: !input heat_mode_boolean
+                    state: "on"
         sequence:
           - choose:
               # Kogan Bladeless Fan
@@ -588,27 +599,54 @@ action:
                       hvac_mode: fan_only
                   - delay:
                       milliseconds: 1000
-                  - service: climate.set_preset_mode
-                    target:
-                      entity_id: !input fan_climate_entity
-                    data:
-                      preset_mode: !input philips_idle_preset
-                  # Set temperature based on idle preset mode
+                  # Set preset and temperature based on whether we're idle or completely off
                   - choose:
+                      # Idle while heat mode is ON - stay ready for heating
                       - conditions:
-                          - condition: template
-                            value_template: "{{ philips_temp_entity != '' }}"
+                          - condition: state
+                            entity_id: !input heat_mode_boolean
+                            state: "on"
+                          - condition: state
+                            entity_id: !input smart_thermostat_entity
+                            state: "idle"
                         sequence:
-                          - service: number.set_value
+                          - service: climate.set_preset_mode
                             target:
-                              entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
+                              entity_id: !input fan_climate_entity
                             data:
-                              value: >
-                                {% if philips_idle_preset == 'ventilation' %}
-                                  1
-                                {% else %}
-                                  37
-                                {% endif %}
+                              preset_mode: "low"
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ philips_temp_entity != '' }}"
+                                sequence:
+                                  - service: number.set_value
+                                    target:
+                                      entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
+                                    data:
+                                      value: 37
+                    default:
+                      # Completely OFF - use idle preset (could be ventilation)
+                      - service: climate.set_preset_mode
+                        target:
+                          entity_id: !input fan_climate_entity
+                        data:
+                          preset_mode: !input philips_idle_preset
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ philips_temp_entity != '' }}"
+                            sequence:
+                              - service: number.set_value
+                                target:
+                                  entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
+                                data:
+                                  value: >
+                                    {% if philips_idle_preset == 'ventilation' %}
+                                      1
+                                    {% else %}
+                                      37
+                                    {% endif %}
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
