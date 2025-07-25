@@ -74,7 +74,7 @@ The Philips Fan Heater uses **preset modes** to control heat output, not tempera
 The blueprint treats the Philips heater as a **"dumb" device** and controls it via preset switching:
 
 1. **PID Calls for Heat** → `preset: "high"` + `temp: 37°C` → **Maximum heat output**
-2. **PID Satisfied (Idle)** → `preset: "low"` + `temp: 37°C` → **Ready for quick heating**  
+2. **PID Satisfied (Idle)** → `preset: "ventilation"` + `temp: 1°C` → **Fan only, ready for heating**  
 3. **Heat Mode OFF** → `preset: "ventilation"` + `temp: 1°C` → **Air circulation only**
 
 #### **Why This Works:**
@@ -114,7 +114,7 @@ Both devices are treated as "dumb" heaters controlled by the smart thermostat, b
 #### **Philips Fan Heater:**
 - **Control Method**: Preset mode switching (temperature number mostly ignored)
 - **Heat Mode ON**: `preset: "high"` + `temperature: 37°C` (full heat power)
-- **PID Idle**: `preset: "low"` + `temperature: 37°C` (ready for heating)
+- **PID Idle**: `preset: "ventilation"` + `temperature: 1°C` (fan only, ready for heating)
 - **Heat Mode OFF**: `preset: "ventilation"` + `temperature: 1°C` (air circulation only)
 
 #### **Key Differences:**

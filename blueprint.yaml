@@ -12,7 +12,7 @@ blueprint:
     
     SMART THERMOSTAT INTEGRATION:
     - Heat Mode ON + PID calls for heat → "high" preset + 37°C (max heat)
-    - Heat Mode ON + PID satisfied (idle) → "low" preset + 37°C (ready for heating)
+    - Heat Mode ON + PID satisfied (idle) → "ventilation" preset + 1°C (fan only, ready for heating)
     - Heat Mode OFF → "ventilation" preset + 1°C (air circulation only)
     
     Features 0.5°C precision temperature control via W100 remote.
@@ -667,9 +667,10 @@ action:
                             target:
                               entity_id: !input fan_climate_entity
                             data:
-                              preset_mode: "low"
+                              preset_mode: "ventilation"
                           - delay:
                               milliseconds: 500
+                          # Set temperature to 1°C for ventilation mode (heat OFF, fan only)
                           - choose:
                               - conditions:
                                   - condition: template
@@ -679,7 +680,7 @@ action:
                                     target:
                                       entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
                                     data:
-                                      value: 37
+                                      value: 1
                     default:
                       # Completely OFF - use idle preset (could be ventilation)
                       - service: climate.set_preset_mode
