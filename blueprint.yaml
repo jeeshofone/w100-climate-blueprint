@@ -348,7 +348,7 @@ action:
                         sequence:
                           - service: select.select_option
                             target:
-                              entity_id: "{{ warm_level_entity }}"
+                              entity_id: "{{ warm_level_entity if warm_level_entity != '' else 'sun.sun' }}"
                             data:
                               option: !input heating_warm_level
                   - service: climate.set_swing_mode
@@ -377,7 +377,8 @@ action:
                             value_template: "{{ philips_temp_entity != '' }}"
                         sequence:
                           - service: number.set_value
-                            entity_id: "{{ philips_temp_entity }}"
+                            target:
+                              entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
                             data:
                               value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
                   - service: climate.set_swing_mode
@@ -393,14 +394,14 @@ action:
                 sequence:
                   - service: switch.turn_on
                     target:
-                      entity_id: "{{ beep_switch }}"
+                      entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
               - conditions:
                   - condition: template
                     value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
-                      entity_id: "{{ beep_switch }}"
+                      entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
           # Force W100 display sync to show temperature
           - delay:
               milliseconds: 500
@@ -452,7 +453,7 @@ action:
                         sequence:
                           - service: select.select_option
                             target:
-                              entity_id: "{{ warm_level_entity }}"
+                              entity_id: "{{ warm_level_entity if warm_level_entity != '' else 'sun.sun' }}"
                             data:
                               option: !input idle_warm_level
                   - service: climate.set_swing_mode
@@ -488,14 +489,14 @@ action:
                 sequence:
                   - service: switch.turn_on
                     target:
-                      entity_id: "{{ beep_switch }}"
+                      entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
               - conditions:
                   - condition: template
                     value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
-                      entity_id: "{{ beep_switch }}"
+                      entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
 
       # Smart Thermostat Idle/Off - Switch to Fan Only
       - conditions:
@@ -538,7 +539,7 @@ action:
                         sequence:
                           - service: select.select_option
                             target:
-                              entity_id: "{{ warm_level_entity }}"
+                              entity_id: "{{ warm_level_entity if warm_level_entity != '' else 'sun.sun' }}"
                             data:
                               option: !input idle_warm_level
                   - service: climate.set_temperature
@@ -1012,14 +1013,14 @@ action:
                 sequence:
                   - service: switch.turn_on
                     target:
-                      entity_id: "{{ beep_switch }}"
+                      entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
               - conditions:
                   - condition: template
                     value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'Disable Beep' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
-                      entity_id: "{{ beep_switch }}"
+                      entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
               - conditions:
                   - condition: template
                     value_template: "{{ device_type == 'kogan_bladeless' and beep_switch != '' and beep_mode == 'On-Mode Change' }}"
@@ -1027,7 +1028,7 @@ action:
                   # On-Mode Change - ensure beep is off initially
                   - service: switch.turn_off
                     target:
-                      entity_id: "{{ beep_switch }}"
+                      entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
 
       # W100 Sync Humidity Display
       - conditions:
@@ -1093,17 +1094,17 @@ action:
         sequence:
           - service: switch.turn_off
             target:
-              entity_id: "{{ beep_switch }}"
+              entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
           - delay:
               milliseconds: 200
           - service: switch.turn_on
             target:
-              entity_id: "{{ beep_switch }}"
+              entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
           - delay:
               milliseconds: 500
           - service: switch.turn_off
             target:
-              entity_id: "{{ beep_switch }}"
+              entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
       
       # Smart Thermostat Mode Change - Beep (Kogan Only)
       - conditions:
@@ -1119,14 +1120,14 @@ action:
         sequence:
           - service: switch.turn_off
             target:
-              entity_id: "{{ beep_switch }}"
+              entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
           - delay:
               milliseconds: 200
           - service: switch.turn_on
             target:
-              entity_id: "{{ beep_switch }}"
+              entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
           - delay:
               milliseconds: 500
           - service: switch.turn_off
             target:
-              entity_id: "{{ beep_switch }}"
+              entity_id: "{{ beep_switch if beep_switch != '' else 'sun.sun' }}"
