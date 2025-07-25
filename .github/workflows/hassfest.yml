@@ -13,5 +13,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      
       - name: Hassfest validation
         uses: "home-assistant/actions/hassfest@master"
+      
+      - name: Check for breaking changes
+        uses: "home-assistant/actions/breaking-changes@master"
