@@ -380,7 +380,7 @@ action:
                             target:
                               entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
                             data:
-                              value: "{{ state_attr(smart_entity, 'temperature') | default(22) }}"
+                              value: 37
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
