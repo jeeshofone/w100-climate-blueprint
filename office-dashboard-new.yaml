@@ -23,8 +23,7 @@ views:
         hours_to_show: 24
         refresh_interval: 60
         entities:
-          - entity: climate.office_heater
-            attribute: current_temperature
+          - entity: sensor.office_temp_group_mean
             name: Current Temp
           - entity: climate.smart_office_fan_controller
             attribute: temperature
@@ -156,8 +155,7 @@ views:
             - title:
                 text: Power (W)
         series:
-          - entity: climate.office_heater
-            attribute: current_temperature
+          - entity: sensor.office_temp_group_mean
             name: Room Temp
             type: line
             color: blue
@@ -189,9 +187,8 @@ views:
           - entity: automation.office_w100
             name: Main Control Automation
           - type: divider
-          - entity: climate.office_heater
+          - entity: sensor.office_temp_group_mean
             name: Temperature Trend
-            attribute: current_temperature
             secondary_info: last-updated
   - title: Detailed Analytics
     path: analytics
@@ -202,8 +199,7 @@ views:
         hours_to_show: 24
         refresh_interval: 30
         entities:
-          - entity: climate.office_heater
-            attribute: current_temperature
+          - entity: sensor.office_temp_group_mean
             name: Room Temperature
           - entity: climate.smart_office_fan_controller
             attribute: temperature
@@ -230,8 +226,7 @@ views:
         entities:
           - entity: sensor.br2_office_humidity
             name: Office Humidity
-          - entity: climate.office_heater
-            attribute: current_temperature
+          - entity: sensor.office_temp_group_mean
             name: Office Temperature
       - type: grid
         columns: 2
@@ -277,8 +272,7 @@ views:
                 group_by:
                   func: avg
                   duration: 5min
-              - entity: climate.office_heater
-                attribute: current_temperature
+              - entity: sensor.office_temp_group_mean
                 name: Room Temperature
                 type: line
                 color: blue
@@ -304,7 +298,7 @@ views:
               - min
               - max
             entities:
-              - climate.office_heater
+              - sensor.office_temp_group_mean
               - sensor.br_heater_consumption
               - sensor.smart_plug_2305155763655451070148e1e9c6662e_power
       - type: custom:apexcharts-card
@@ -343,8 +337,7 @@ views:
             - title:
                 text: Power (W)
         series:
-          - entity: climate.office_heater
-            attribute: current_temperature
+          - entity: sensor.office_temp_group_mean
             name: Current Temp
             type: line
             color: blue
@@ -431,8 +424,7 @@ views:
             name: Avg Heater Power
             unit: W
           - type: statistic
-            entity: climate.office_heater
-            attribute: current_temperature
+            entity: sensor.office_temp_group_mean
             period:
               calendar:
                 period: day
@@ -468,8 +460,7 @@ views:
             - title:
                 text: Power (W)
         series:
-          - entity: climate.office_heater
-            attribute: current_temperature
+          - entity: sensor.office_temp_group_mean
             name: Temperature
             type: line
             color: blue
