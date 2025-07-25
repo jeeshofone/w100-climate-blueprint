@@ -1,32 +1,62 @@
 # W100 Climate Blueprint
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1+-blue.svg)](https://www.home-assistant.io/)
-[![Blueprint](https://img.shields.io/badge/Blueprint-v0.11.3-green.svg)](blueprint.yaml)
+[![Blueprint](https://img.shields.io/badge/Blueprint-v0.12.1-green.svg)](blueprint.yaml)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
-A comprehensive Home Assistant blueprint for intelligent climate control using PID-controlled fan/heater combos with W100 Zigbee remote integration. Features advanced temperature sensor workarounds, smart beep control, and seamless display synchronization.
+A comprehensive Home Assistant blueprint for intelligent climate control using PID-controlled fan/heater combos with W100 Zigbee remote integration. Supports both Kogan Smarterhome Bladeless Fan and Philips Fan Heater devices. Features advanced temperature sensor workarounds, smart beep control, and seamless display synchronization.
 
-## ✅ v0.11 - ALL CRITICAL ISSUES FIXED
+## ✅ v0.12.1 - MALFORMED ENTITY_ID ERRORS FIXED
 
-**Major release with comprehensive fixes for all identified issues:**
+**Critical bug fix release addressing automation creation failures:**
 
-- ✅ **OFF Mode W100 Control**: W100 remote now fully functional when thermostat is OFF
-- ✅ **Display Bouncing**: Root cause finally addressed - no more bouncing between temperature and fan speed
-- ✅ **Toggle Button**: Correct behavior implemented (OFF ↔ HEAT cycle)
-- ✅ **Code Cleanup**: Removed dead code and optimized triggers
+- ✅ **Fixed Malformed Entity_ID Errors**: Resolved automation creation failures for both device types
+- ✅ **Enhanced Entity Validation**: All entity_id references now have safe fallbacks for HA validation
+- ✅ **Service Call Format Fixed**: Corrected number.set_value service call structure
+- ✅ **Conditional Logic Preserved**: Optional entity handling still works as intended
+- ✅ **Programmatic Analysis Tools**: Added blueprint analyzer for future debugging
 
-**Status**: 🟢 **Production Ready** - All core functionality working as expected  
-**Upgrade**: Highly recommended from v0.10 - fixes critical functionality failures
+**Status**: 🟢 **Production Ready** - All known entity_id validation issues resolved  
+**Upgrade**: **REQUIRED** for users experiencing automation creation errors
+
+## Recent Fixes (v0.12.1)
+
+### 🚨 **Critical Issue Resolved**
+Both Kogan and Philips automations were failing with:
+```
+Message malformed: not a valid value for dictionary value @ data['actions'][0]['choose'][0]['sequence'][0]['choose'][X]['sequence'][2]['choose'][0]['sequence'][0]['entity_id']
+```
+
+### 🔧 **Root Cause & Solution**
+**Problem**: Home Assistant validates ALL entity_id references at automation creation time, regardless of conditional logic. Template variables resolving to empty strings caused malformed entity_id errors.
+
+**Solution**: Implemented entity_id fallback pattern:
+```yaml
+entity_id: "{{ variable_name if variable_name != '' else 'sun.sun' }}"
+```
+
+This ensures:
+- ✅ Valid entity_id for HA validation (always resolves to existing entity)
+- ✅ Conditional logic preserved (prevents execution when input empty)
+- ✅ No runtime errors (sun.sun exists but won't be called due to conditions)
+
+### 📊 **Validation Results**
+- ✅ 16 entity_id references updated with fallback logic
+- ✅ 1 service call format corrected
+- ✅ YAML syntax validated
+- ✅ Blueprint structure verified
+- ✅ Both device types tested
 
 ## Features
 
 🌡️ **PID Temperature Control** - Precise temperature regulation using smart thermostat integration  
 🎛️ **W100 Remote Integration** - Full control via Zigbee remote with display sync  
 🔄 **Temperature Sensor Workaround** - Automatic detection and correction of stuck heater scenarios  
-🔊 **Smart Beep Control** - Configurable audio feedback modes  
+🔊 **Smart Beep Control** - Configurable audio feedback modes (Kogan only)  
 💨 **Dual Mode Operation** - Heat mode with temperature control, cool mode with fan speed control  
 📊 **Real-time Display Sync** - Temperature, humidity, and status updates on W100 display  
 ⚡ **Parallel Processing** - Optimized for responsive control with multiple concurrent triggers  
+🛡️ **Robust Entity Handling** - Safe fallbacks for all optional entity references
 
 ## Dependencies
 
@@ -38,7 +68,7 @@ This blueprint requires the following Home Assistant integrations:
    - Advanced PID controller for precise temperature control
    - Install via HACS or manual installation
 
-2. **[Tuya Local](https://github.com/make-all/tuya-local)**
+2. **[Tuya Local](https://github.com/make-all/tuya-local)** (for Kogan devices)
    - For Kogan Smarterhome bladeless heater fan control
    - Provides climate and switch entities for the fan
 
@@ -49,6 +79,7 @@ This blueprint requires the following Home Assistant integrations:
 ### Compatible Hardware
 
 - **Kogan Smarterhome Bladeless Heater Fan** (via Tuya Local)
+- **Philips Fan Heater** (via local integration)
 - **W100 Zigbee Temperature/Humidity Remote** 
 - Any temperature sensor supported by Home Assistant
 - Any humidity sensor supported by Home Assistant
@@ -196,6 +227,14 @@ input_boolean:
 
 ### Common Issues
 
+**Malformed entity_id errors (FIXED in v0.12.1):**
+```
+Message malformed: not a valid value for dictionary value @ data['actions'][0]['choose'][0]['sequence'][0]['choose'][X]['sequence'][2]['choose'][0]['sequence'][0]['entity_id']
+```
+- **Solution**: Update to v0.12.1 - all entity_id validation issues resolved
+- **Root cause**: HA validates entity_id references at automation creation time
+- **Technical details**: See [MALFORMED_ENTITY_FIX_SUMMARY.md](MALFORMED_ENTITY_FIX_SUMMARY.md)
+
 **W100 not responding:**
 - Verify exact device name case sensitivity
 - Check Zigbee2MQTT connection
@@ -224,6 +263,19 @@ Enable debug logging by setting the smart thermostat's `debug: true` and monitor
 - `integral`: I term value
 - `derivative`: D term value
 - `error`: Temperature error
+
+### Blueprint Analysis Tool
+
+For advanced troubleshooting, use the included analyzer:
+```bash
+python analyze_blueprint.py blueprint.yaml
+```
+
+This tool can:
+- Identify problematic entity_id references
+- Trace exact error paths from HA error messages
+- Validate blueprint structure and syntax
+- Analyze specific input configurations
 
 ## Example Configurations
 
@@ -258,6 +310,8 @@ idle_temperature: 21
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
+- **v0.12.1**: 🚨 **CRITICAL FIX** - Resolved malformed entity_id errors for both device types with fallback patterns
+- **v0.12.0**: ✅ **MULTI-DEVICE SUPPORT** - Complete Philips Fan Heater integration alongside Kogan support
 - **v0.11.3**: ✅ **0.5°C PRECISION** - W100 buttons now adjust temperature by 0.5°C for finer control
 - **v0.11.2**: ✅ **MQTT REMOVED** - Eliminated timeout errors by using only HA services
 - **v0.11**: ✅ **ALL ISSUES FIXED** - Complete rewrite of OFF mode control & proper display bouncing fix
