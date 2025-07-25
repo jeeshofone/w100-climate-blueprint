@@ -58,6 +58,71 @@ This ensures:
 ⚡ **Parallel Processing** - Optimized for responsive control with multiple concurrent triggers  
 🛡️ **Robust Entity Handling** - Safe fallbacks for all optional entity references
 
+## Philips Fan Heater Integration
+
+### 🔥 **How Philips Heater Control Works**
+
+The Philips Fan Heater uses **preset modes** to control heat output, not temperature numbers:
+
+#### **Preset Mode Behavior:**
+- **"high" preset** → Heat element at **full power** (temperature number ignored)
+- **"medium" preset** → Heat element at **medium power** (temperature number ignored)  
+- **"low" preset** → Heat element at **low power** (temperature number ignored)
+- **"ventilation" preset** → **Heat OFF**, fan only for air circulation
+
+#### **Smart Thermostat Integration:**
+The blueprint treats the Philips heater as a **"dumb" device** and controls it via preset switching:
+
+1. **PID Calls for Heat** → `preset: "high"` + `temp: 37°C` → **Maximum heat output**
+2. **PID Satisfied (Idle)** → `preset: "low"` + `temp: 37°C` → **Ready for quick heating**  
+3. **Heat Mode OFF** → `preset: "ventilation"` + `temp: 1°C` → **Air circulation only**
+
+#### **Why This Works:**
+- **Instant Response**: Electric heaters provide immediate heat when preset changes
+- **PID Control**: On/off control via preset switching gives PID precise temperature regulation
+- **Energy Efficient**: Only heats when smart thermostat demands it
+- **External Sensors**: Uses your room sensors instead of heater's internal thermostat
+
+### ⚙️ **Configuration Options**
+
+#### **Required Entities:**
+- `fan_climate_entity`: Main heater climate entity (e.g., `climate.office_heater`)
+- `temperature_number_entity`: Temperature control entity (e.g., `number.office_heater_temperature`)
+- `fan_entity`: Fan control entity (e.g., `fan.office_heater`)
+
+#### **Preset Settings:**
+- **Heating Preset**: Used when PID calls for heat (default: "high" for maximum output)
+- **Idle Preset**: Used when heat mode is OFF (default: "low", recommend: "ventilation")
+
+### 🎛️ **W100 Remote Control**
+
+When using W100 remote with Philips heater:
+- **Heat Mode**: Shows target temperature, adjusts in 0.5°C increments
+- **Fan Mode**: Shows fan preset as numbers (low=2, medium=5, high=7, auto_plus=9)
+- **Double-tap center**: Toggle between heat mode and fan mode
+
+### 🔄 **Kogan vs Philips Control Logic**
+
+Both devices are treated as "dumb" heaters controlled by the smart thermostat, but use different control methods:
+
+#### **Kogan Bladeless Fan:**
+- **Control Method**: Temperature + warm level settings
+- **Heat Mode ON**: `temperature: 30°C` + `warm_level: 4` (high heat)
+- **PID Idle**: `temperature: 22°C` + `warm_level: 1` + `fan_speed: 3`
+- **Heat Mode OFF**: `temperature: 22°C` + `warm_level: 1` + `fan_speed: 3`
+
+#### **Philips Fan Heater:**
+- **Control Method**: Preset mode switching (temperature number mostly ignored)
+- **Heat Mode ON**: `preset: "high"` + `temperature: 37°C` (full heat power)
+- **PID Idle**: `preset: "low"` + `temperature: 37°C` (ready for heating)
+- **Heat Mode OFF**: `preset: "ventilation"` + `temperature: 1°C` (air circulation only)
+
+#### **Key Differences:**
+- **Kogan**: Uses temperature and warm level for gradual heat control
+- **Philips**: Uses preset modes for on/off heat control (temperature setting ignored)
+- **Both**: Provide instant electric heating when PID controller demands heat
+- **Both**: Allow external temperature sensors to override internal thermostats
+
 ## Dependencies
 
 This blueprint requires the following Home Assistant integrations:

@@ -1,6 +1,21 @@
 blueprint:
   name: Multi-Device W100 Smart Control
-  description: v0.12.0 - Complete PID-controlled fan/heater with W100 remote integration - Supports Kogan Bladeless Fan and Philips Fan Heater (0.5°C precision temperature control)
+  description: |
+    v0.12.1 - Complete PID-controlled fan/heater with W100 remote integration
+    
+    Supports Kogan Bladeless Fan and Philips Fan Heater with intelligent preset control.
+    
+    KEY PHILIPS HEATER BEHAVIOR:
+    - "high" preset = Full heat power ON (temperature number ignored)
+    - "ventilation" preset = Heat OFF, fan only (temperature number ignored) 
+    - PID control achieved via preset switching, not temperature adjustment
+    
+    SMART THERMOSTAT INTEGRATION:
+    - Heat Mode ON + PID calls for heat → "high" preset + 37°C (max heat)
+    - Heat Mode ON + PID satisfied (idle) → "low" preset + 37°C (ready for heating)
+    - Heat Mode OFF → "ventilation" preset + 1°C (air circulation only)
+    
+    Features 0.5°C precision temperature control via W100 remote.
   domain: automation
   input:
     device_type:
@@ -150,7 +165,10 @@ blueprint:
     # Philips Fan Heater specific options
     philips_heating_preset:
       name: Heating Preset Mode (Philips Only)
-      description: Preset mode to use for heating (only for Philips Fan Heater)
+      description: |
+        Preset mode to use for heating (only for Philips Fan Heater).
+        "high" = Full heat power (recommended for PID control).
+        Temperature number is ignored - preset controls heat element power.
       selector:
         select:
           options:
@@ -163,7 +181,10 @@ blueprint:
     
     philips_idle_preset:
       name: Idle Preset Mode (Philips Only)
-      description: Preset mode to use when idle/off (only for Philips Fan Heater)
+      description: |
+        Preset mode to use when heat mode is OFF (only for Philips Fan Heater).
+        "ventilation" = Heat OFF, fan only (recommended for air circulation).
+        "low"/"medium"/"high" = Some heat available.
       selector:
         select:
           options:
@@ -359,6 +380,10 @@ action:
                     data:
                       swing_mode: !input swing_mode
               # Philips Fan Heater
+              # IMPORTANT: Philips heater preset modes control heat element power:
+              # - "high" preset = Full heat power ON (temperature number ignored)
+              # - "ventilation" preset = Heat OFF, fan only (temperature number ignored)
+              # - PID control achieved via preset switching, not temperature adjustment
               - conditions:
                   - condition: template
                     value_template: "{{ device_type == 'philips_heater' }}"
@@ -370,6 +395,7 @@ action:
                       hvac_mode: heat
                   - delay:
                       milliseconds: 500
+                  # Set to heating preset for maximum heat output when PID calls for heat
                   - service: climate.set_preset_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -377,6 +403,7 @@ action:
                       preset_mode: !input philips_heating_preset
                   - delay:
                       milliseconds: 500
+                  # Set temperature to maximum (37°C) - mostly ignored in "high" preset but ensures readiness
                   - choose:
                       - conditions:
                           - condition: template
@@ -470,6 +497,7 @@ action:
                     data:
                       swing_mode: !input swing_mode
               # Philips Fan Heater
+              # When heat mode is turned OFF, switch to idle preset (usually "ventilation" for air circulation)
               - conditions:
                   - condition: template
                     value_template: "{{ device_type == 'philips_heater' }}"
@@ -481,6 +509,7 @@ action:
                       hvac_mode: fan_only
                   - delay:
                       milliseconds: 500
+                  # Use philips_idle_preset - typically "ventilation" for air circulation without heating
                   - service: climate.set_preset_mode
                     target:
                       entity_id: !input fan_climate_entity
@@ -488,7 +517,7 @@ action:
                       preset_mode: !input philips_idle_preset
                   - delay:
                       milliseconds: 500
-                  # Set temperature based on idle preset mode
+                  # Set temperature based on idle preset mode (1°C for ventilation, 37°C for heating presets)
                   - choose:
                       - conditions:
                           - condition: template
@@ -611,6 +640,7 @@ action:
                     data:
                       fan_mode: !input idle_fan_speed
               # Philips Fan Heater
+              # Handle two scenarios: PID idle while heat mode ON, vs completely OFF
               - conditions:
                   - condition: template
                     value_template: "{{ device_type == 'philips_heater' }}"
