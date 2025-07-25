@@ -380,12 +380,7 @@ action:
                             target:
                               entity_id: "{{ philips_temp_entity if philips_temp_entity != '' else 'sun.sun' }}"
                             data:
-                              value: >
-                                {% if philips_heating_preset == 'ventilation' %}
-                                  1
-                                {% else %}
-                                  37
-                                {% endif %}
+                              value: 37
                   - service: climate.set_swing_mode
                     target:
                       entity_id: !input fan_climate_entity
